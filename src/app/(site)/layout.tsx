@@ -1,12 +1,17 @@
+import { Suspense } from "react";
+import { RefCapture } from "@/components/ref-capture";
 import { Shell } from "@/components/shell";
 import { currentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/session";
 import { mediaUrl } from "@/lib/storage";
 import { subscribedChannels } from "@/lib/videos";
+import { balanceOf } from "@/lib/wallet";
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
-  const subscriptions = user ? await subscribedChannels(user.id) : [];
+  const [subscriptions, balance] = user
+    ? await Promise.all([subscribedChannels(user.id), balanceOf(user.id)])
+    : [[], null];
   return (
     <Shell
       user={
@@ -15,7 +20,11 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           : null
       }
       subscriptions={subscriptions}
+      credits={balance ? balance.total : null}
     >
+      <Suspense fallback={null}>
+        <RefCapture />
+      </Suspense>
       {children}
     </Shell>
   );

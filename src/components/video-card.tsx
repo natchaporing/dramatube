@@ -1,5 +1,6 @@
 import Link from "next/link";
 import clsx from "clsx";
+import { Lock } from "lucide-react";
 import { Avatar } from "./avatar";
 import { formatCount, formatDuration, isVertical, timeAgo } from "@/lib/format";
 import type { Locale, Translate } from "@/lib/i18n";
@@ -56,6 +57,14 @@ export function Thumbnail({
               </span>
             )}
           </span>
+          {video.lockPrice !== undefined && (
+            <span
+              className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-warn"
+              data-testid="lock-badge"
+            >
+              <Lock size={11} /> {video.lockPrice}
+            </span>
+          )}
           {video.durationSec > 0 && (
             <span className="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1 py-0.5 text-xs font-medium text-white">
               {formatDuration(video.durationSec)}

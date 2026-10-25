@@ -110,10 +110,19 @@ export async function localSize(key: string): Promise<number | null> {
   }
 }
 
-/** The URL a browser should use for a stored object. */
+/**
+ * The URL a browser should use for a stored object.
+ *
+ * Video files always go through /api/media, which checks who may play them
+ * (private videos, paid episodes) before redirecting to a short-lived signed
+ * link. Pictures may come straight from a public bucket when one is set.
+ * Selling episodes needs a private bucket: in a public one, a buyer could
+ * share a file's address and the paywall would not stand between it and
+ * anybody.
+ */
 export function mediaUrl(key: string | null | undefined): string | null {
   if (!key) return null;
-  if (env.storageDriver === "s3" && env.s3PublicBaseUrl) return `${env.s3PublicBaseUrl}/${key}`;
+  if (env.storageDriver === "s3" && env.s3PublicBaseUrl && !key.startsWith("videos/")) return `${env.s3PublicBaseUrl}/${key}`;
   return `/api/media/${key}`;
 }
 

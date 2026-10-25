@@ -12,9 +12,13 @@ import { formatCount, formatDate, timeAgo } from "@/lib/format";
 import { mediaUrl } from "@/lib/storage";
 import { listComments, isSubscribed, reactionOf, resumePosition, type CommentView } from "@/lib/social";
 import { pageContext } from "@/lib/viewer";
-import { getWatchable, seriesEpisodes, upNext } from "@/lib/videos";
+import { getWatchable, seriesEpisodes, upNext, withLocks } from "@/lib/videos";
 import { currentUser } from "@/lib/auth";
 import { issueViewTicket } from "@/lib/views";
+import { Paywall } from "@/components/watch/paywall";
+import { lockFor } from "@/lib/access";
+import { restOfSeries } from "@/lib/unlock";
+import { balanceOf } from "@/lib/wallet";
 
 export async function generateMetadata({ params }: PageProps<"/watch/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -56,14 +60,20 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
   }
 
   const own = user?.id === video.channelId;
-  const [next, comments, reaction, subscribed, resume, episodes] = await Promise.all([
+  const [next, comments, reaction, subscribed, resume, rawEpisodes, lock] = await Promise.all([
     upNext(video),
     listComments(video.id),
     user ? reactionOf(user.id, video.id) : Promise.resolve(0 as const),
     user && !own ? isSubscribed(user.id, video.channelId) : Promise.resolve(false),
     user ? resumePosition(user.id, video.id) : Promise.resolve(0),
     video.seriesId ? seriesEpisodes(video.seriesId, own) : Promise.resolve([]),
+    lockFor(user?.id ?? null, video.id),
   ]);
+  const [episodes, upNextItems] = await Promise.all([withLocks(user?.id ?? null, rawEpisodes), withLocks(user?.id ?? null, next.items)]);
+  const [rest, balance] =
+    lock.locked && video.seriesId
+      ? await Promise.all([restOfSeries(user?.id ?? null, video.seriesId), user ? balanceOf(user.id) : Promise.resolve(null)])
+      : [null, null];
 
   const requestedStart = Number(query.t);
   const startAt = Number.isFinite(requestedStart) && requestedStart > 0 ? requestedStart : resume > 10 ? resume : 0;
@@ -83,19 +93,35 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
   return (
     <div className="mx-auto grid max-w-[1760px] grid-cols-1 gap-x-6 gap-y-6 pb-12 sm:px-6 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_402px] lg:grid-rows-[auto_1fr]">
       <div className="min-w-0 lg:col-start-1 lg:row-start-1">
-        <Player
-          videoId={video.id}
-          src={video.videoUrl}
-          poster={video.thumbnailUrl}
-          width={video.width}
-          height={video.height}
-          durationSec={video.durationSec}
-          startAt={startAt}
-          signedIn={Boolean(user)}
-          next={nextUp ? { id: nextUp.id, title: nextUp.title } : null}
-          countable={video.status === "ready" && !own}
-          viewTicket={issueViewTicket(video.id)}
-        />
+        {lock.locked && video.seriesId && lock.sale ? (
+          <Paywall
+            videoId={video.id}
+            seriesId={video.seriesId}
+            episodeNumber={video.episodeNumber ?? 0}
+            freeEpisodes={lock.sale.freeEpisodes}
+            price={lock.price}
+            rest={rest ? { count: rest.remaining.length, total: rest.total, fullPrice: rest.fullPrice } : null}
+            balance={balance ? balance.total : null}
+            poster={video.thumbnailUrl}
+            width={video.width}
+            height={video.height}
+            here={`/watch/${video.id}`}
+          />
+        ) : (
+          <Player
+            videoId={video.id}
+            src={video.videoUrl}
+            poster={video.thumbnailUrl}
+            width={video.width}
+            height={video.height}
+            durationSec={video.durationSec}
+            startAt={startAt}
+            signedIn={Boolean(user)}
+            next={nextUp ? { id: nextUp.id, title: nextUp.title } : null}
+            countable={video.status === "ready" && !own}
+            viewTicket={issueViewTicket(video.id)}
+          />
+        )}
 
         <div className="px-4 sm:px-0">
           {video.status === "removed" && (
@@ -148,7 +174,11 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
             </div>
             <div className="no-scrollbar flex items-center gap-2 overflow-x-auto">
               <Reactions videoId={video.id} initial={reaction} likes={video.likeCount} signedIn={Boolean(user)} />
-              <ShareButton videoId={video.id} embeddable={video.visibility !== "private" && video.status === "ready"} />
+              <ShareButton
+                videoId={video.id}
+                embeddable={video.visibility !== "private" && video.status === "ready"}
+                refHandle={own ? video.channel.handle : undefined}
+              />
               {!own && <ReportButton videoId={video.id} signedIn={Boolean(user)} />}
             </div>
           </div>
@@ -193,7 +223,7 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
           <AutoplayToggle />
         </div>
         <div className="space-y-2">
-          {next.items.map((item) => (
+          {upNextItems.map((item) => (
             <VideoRow key={item.id} video={item} fmt={fmt} />
           ))}
         </div>

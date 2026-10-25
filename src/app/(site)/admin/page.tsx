@@ -3,6 +3,9 @@ import { dismissReportsAction, removeVideoAction, restoreVideoAction } from "@/a
 import { EmptyState, Placeholder } from "@/components/video-card";
 import { timeAgo } from "@/lib/format";
 import { openReports, removedVideos } from "@/lib/moderation";
+import { markPayoutPaidAction, rejectPayoutAction, reviewSellerAction } from "@/app/actions/money";
+import { pendingSellers, requestedPayouts } from "@/lib/earnings";
+import { ageOn, satangToBaht } from "@/lib/money";
 import { pageContext } from "@/lib/viewer";
 
 export const metadata = { title: "Moderation" };
@@ -10,10 +13,75 @@ export const metadata = { title: "Moderation" };
 export default async function AdminPage() {
   const { admin, t, locale } = await pageContext();
   if (!admin) return <EmptyState title={t("admin.forbidden")} />;
-  const [queue, removed] = await Promise.all([openReports(), removedVideos()]);
+  const [queue, removed, applicants, payoutQueue] = await Promise.all([openReports(), removedVideos(), pendingSellers(), requestedPayouts()]);
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-10 px-4 py-6 sm:px-6">
+      <section>
+        <h2 className="mb-4 text-2xl font-bold text-text">{t("admin.payouts")}</h2>
+        {payoutQueue.length === 0 ? (
+          <p className="rounded-xl bg-surface p-6 text-center text-muted">{t("admin.noPayouts")}</p>
+        ) : (
+          <div className="space-y-3">
+            {payoutQueue.map(({ payout, handle }) => (
+              <div key={payout.id} className="flex flex-col gap-3 rounded-xl border border-line p-4 md:flex-row md:items-center">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-text">
+                    {t("admin.sendTo", { amount: satangToBaht(payout.amountSatang), id: payout.promptpayId, name: payout.legalName })}
+                  </div>
+                  <div className="text-xs text-muted">
+                    @{handle} · {payout.credits.toLocaleString()} credits · {timeAgo(payout.requestedAt, locale)}
+                  </div>
+                </div>
+                <form action={markPayoutPaidAction} className="flex gap-2">
+                  <input type="hidden" name="payoutId" value={payout.id} />
+                  <input name="reference" placeholder={t("admin.reference")} className="field h-9 py-1" maxLength={120} />
+                  <button className="btn btn-primary h-9 shrink-0">{t("admin.markPaid")}</button>
+                </form>
+                <form action={rejectPayoutAction} className="flex gap-2">
+                  <input type="hidden" name="payoutId" value={payout.id} />
+                  <input name="note" placeholder={t("admin.rejectNote")} className="field h-9 py-1" maxLength={300} />
+                  <button className="btn btn-ghost h-9 shrink-0">{t("admin.rejectPayout")}</button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-4 text-2xl font-bold text-text">{t("admin.sellers")}</h2>
+        {applicants.length === 0 ? (
+          <p className="rounded-xl bg-surface p-6 text-center text-muted">{t("admin.noSellers")}</p>
+        ) : (
+          <div className="space-y-3">
+            {applicants.map(({ seller, handle, name, email }) => (
+              <div key={seller.userId} className="flex flex-col gap-3 rounded-xl border border-line p-4 md:flex-row md:items-center" data-testid="seller-application">
+                <div className="min-w-0 flex-1 text-sm">
+                  <div className="font-semibold text-text">
+                    {seller.legalName} · <Link href={`/@${handle}`} className="text-[#8ab4ff] hover:underline">@{handle}</Link>
+                  </div>
+                  <div className="text-xs text-muted">
+                    {name} · {email} · PromptPay {seller.promptpayId} · {t("admin.age", { age: ageOn(seller.birthDate) })}
+                  </div>
+                </div>
+                <form action={reviewSellerAction}>
+                  <input type="hidden" name="userId" value={seller.userId} />
+                  <input type="hidden" name="decision" value="approve" />
+                  <button className="btn btn-primary h-9">{t("admin.approve")}</button>
+                </form>
+                <form action={reviewSellerAction} className="flex gap-2">
+                  <input type="hidden" name="userId" value={seller.userId} />
+                  <input type="hidden" name="decision" value="reject" />
+                  <input name="note" placeholder={t("admin.rejectNote")} className="field h-9 py-1" maxLength={300} />
+                  <button className="btn btn-ghost h-9 shrink-0">{t("admin.reject")}</button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section>
         <h1 className="mb-6 text-2xl font-bold text-text">{t("admin.openReports")}</h1>
         {queue.length === 0 ? (

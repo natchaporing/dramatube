@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, LayoutDashboard, LogOut, Shield, SquarePlus } from "lucide-react";
+import { ChevronRight, Coins, LayoutDashboard, LogOut, Shield, SquarePlus } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { SignInWall } from "@/components/sign-in-wall";
 import { VideoCard } from "@/components/video-card";
@@ -55,6 +55,9 @@ export default async function YouPage() {
             </Link>
             <Link href="/upload" className="btn btn-ghost h-9">
               <SquarePlus size={16} /> {t("nav.upload")}
+            </Link>
+            <Link href="/wallet" className="btn btn-ghost h-9">
+              <Coins size={16} /> {t("nav.wallet")}
             </Link>
             {admin && (
               <Link href="/admin" className="btn btn-ghost h-9">

@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   date,
   index,
   integer,
@@ -47,6 +48,19 @@ export const series = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
+
+    /* What the creator sells. A series is free until its creator, once
+       verified as a seller, puts it on sale. */
+    onSale: boolean("on_sale").notNull().default(false),
+    /** Episodes 1..freeEpisodes are free to everyone; the paywall starts after. */
+    freeEpisodes: integer("free_episodes").notNull().default(5),
+    /** Credits per locked episode. */
+    episodePrice: integer("episode_price").notNull().default(30),
+    /** The rest of the series at once costs this percentage of buying it episode by episode. */
+    seriesPricePercent: integer("series_price_percent").notNull().default(70),
+    /** Exclusive to DramaTube for 90 days from this moment: +10 points of creator share. */
+    exclusiveSince: timestamp("exclusive_since", { withTimezone: true }),
+
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -261,3 +275,187 @@ export type User = typeof users.$inferSelect;
 export type Video = typeof videos.$inferSelect;
 export type Series = typeof series.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
+
+/* ------------------------------------------------------------------------ */
+/* Money. Credits are the wallet; see docs/MONETIZATION.md.                   */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * A top-up, written down before the viewer is sent to pay. The credits it
+ * grants are the ones recorded here, never ones read back from a payment
+ * provider's message, so a forged or replayed webhook cannot choose an amount.
+ */
+export const purchases = pgTable(
+  "purchases",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    packId: text("pack_id").notNull(),
+    credits: integer("credits").notNull(),
+    bonusCredits: integer("bonus_credits").notNull(),
+    amountSatang: integer("amount_satang").notNull(),
+    currency: text("currency").notNull().default("thb"),
+    method: text("method", { enum: ["promptpay", "card"] }).notNull(),
+    provider: text("provider", { enum: ["omise", "stripe", "dev"] }).notNull(),
+    /** The provider's id for this payment: an Omise charge, a Stripe Checkout session. */
+    providerRef: text("provider_ref"),
+    status: text("status", { enum: ["pending", "paid", "failed", "expired", "reversed"] }).notNull().default("pending"),
+    /** PromptPay only: the QR the viewer scans, and when it stops working. */
+    qrImageUrl: text("qr_image_url"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    /** Where to send the viewer afterwards: the episode they were trying to watch. */
+    returnTo: text("return_to"),
+    createdAt: createdAt(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("purchases_provider_ref_idx").on(t.provider, t.providerRef),
+    index("purchases_user_idx").on(t.userId, t.createdAt),
+  ],
+);
+
+/**
+ * Credits a viewer holds, as lots. Bought credits never expire; bonus credits
+ * do, so spending takes bonus first, soonest-expiring first, then bought.
+ * A balance is the sum of `remaining` over lots that have not expired.
+ */
+export const creditLots = pgTable(
+  "credit_lots",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    source: text("source", { enum: ["paid", "bonus"] }).notNull(),
+    amount: integer("amount").notNull(),
+    remaining: integer("remaining").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    purchaseId: text("purchase_id").references(() => purchases.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("credit_lots_user_idx").on(t.userId, t.expiresAt)],
+);
+
+/**
+ * Every credit movement, append-only: the explanation of every balance.
+ * `externalRef` is unique, which is what makes granting a purchase happen
+ * exactly once however many times a payment provider repeats itself.
+ */
+export const creditLedger = pgTable(
+  "credit_ledger",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    delta: integer("delta").notNull(),
+    reason: text("reason", { enum: ["topup", "bonus", "unlock", "refund", "reversal"] }).notNull(),
+    purchaseId: text("purchase_id"),
+    unlockId: text("unlock_id"),
+    externalRef: text("external_ref"),
+    note: text("note").notNull().default(""),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("credit_ledger_external_ref_idx").on(t.externalRef), index("credit_ledger_user_idx").on(t.userId, t.createdAt)],
+);
+
+/** An episode a viewer owns. Permanent: there is no rental. */
+export const unlocks = pgTable(
+  "unlocks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    videoId: text("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    creatorId: text("creator_id").notNull(),
+    /** Credits this episode cost, and which kind paid for it (for refunds). */
+    price: integer("price").notNull(),
+    paidSpent: integer("paid_spent").notNull(),
+    bonusSpent: integer("bonus_spent").notNull(),
+    attribution: text("attribution", { enum: ["direct", "discovered"] }).notNull(),
+    viaSeriesPrice: boolean("via_series_price").notNull().default(false),
+    createdAt: createdAt(),
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("unlocks_user_video_idx").on(t.userId, t.videoId), index("unlocks_video_idx").on(t.videoId)],
+);
+
+/**
+ * The creator's side of an unlock. Held for 14 days — the refund window —
+ * then available to cash out. `payoutId` is set when a payout claims it.
+ */
+export const earnings = pgTable(
+  "earnings",
+  {
+    id: text("id").primaryKey(),
+    creatorId: text("creator_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    unlockId: text("unlock_id").notNull(),
+    videoId: text("video_id"),
+    credits: integer("credits").notNull(),
+    attribution: text("attribution", { enum: ["direct", "discovered"] }).notNull(),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull(),
+    status: text("status", { enum: ["open", "paid", "reversed"] }).notNull().default("open"),
+    payoutId: text("payout_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("earnings_unlock_idx").on(t.unlockId), index("earnings_creator_idx").on(t.creatorId, t.availableAt)],
+);
+
+/** A creator's application to sell, and its outcome. */
+export const sellers = pgTable("sellers", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
+  legalName: text("legal_name").notNull(),
+  /** A 10-digit Thai mobile number or a 13-digit citizen ID registered with PromptPay. */
+  promptpayId: text("promptpay_id").notNull(),
+  birthDate: date("birth_date").notNull(),
+  note: text("note").notNull().default(""),
+  appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+});
+
+/** Money going out: one PromptPay transfer to a creator. */
+export const payouts = pgTable(
+  "payouts",
+  {
+    id: text("id").primaryKey(),
+    creatorId: text("creator_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    credits: integer("credits").notNull(),
+    amountSatang: integer("amount_satang").notNull(),
+    /** Copied from the seller record at request time, so a later edit cannot redirect it. */
+    promptpayId: text("promptpay_id").notNull(),
+    legalName: text("legal_name").notNull(),
+    status: text("status", { enum: ["requested", "paid", "rejected"] }).notNull().default("requested"),
+    reference: text("reference"),
+    note: text("note").notNull().default(""),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+  },
+  (t) => [index("payouts_creator_idx").on(t.creatorId, t.requestedAt)],
+);
+
+/** A signed-in viewer arrived through a creator's own link: sales to them are direct for 30 days. */
+export const referrals = pgTable(
+  "referrals",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.channelId] })],
+);
+
+export type Purchase = typeof purchases.$inferSelect;
+export type Unlock = typeof unlocks.$inferSelect;
+

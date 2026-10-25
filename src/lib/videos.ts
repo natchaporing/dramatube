@@ -1,6 +1,7 @@
 import { and, desc, eq, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { reactions, series, subscriptions, users, videos, watchHistory, type User, type Video } from "@/db/schema";
+import { locksFor } from "./access";
 import { mediaUrl } from "./storage";
 import { isAdmin } from "./session";
 import type { Category } from "./catalog";
@@ -37,9 +38,12 @@ export interface VideoCard {
   visibility: "public" | "unlisted" | "private";
   status: "ready" | "removed";
   episodeNumber: number | null;
+  seriesId: string | null;
   channel: ChannelRef;
   /** Seconds watched, when the list is somebody's history. */
   positionSec?: number;
+  /** Credits this viewer would pay to watch it; absent when it is free or theirs. */
+  lockPrice?: number;
 }
 
 const cardColumns = {
@@ -58,6 +62,7 @@ const cardColumns = {
   visibility: videos.visibility,
   status: videos.status,
   episodeNumber: videos.episodeNumber,
+  seriesId: videos.seriesId,
   channelId: users.id,
   channelHandle: users.handle,
   channelName: users.name,
@@ -80,6 +85,7 @@ type CardRow = {
   visibility: "public" | "unlisted" | "private";
   status: "ready" | "removed";
   episodeNumber: number | null;
+  seriesId: string | null;
   channelId: string;
   channelHandle: string;
   channelName: string;
@@ -103,6 +109,7 @@ export function toCard(row: CardRow): VideoCard {
     visibility: row.visibility,
     status: row.status,
     episodeNumber: row.episodeNumber,
+    seriesId: row.seriesId,
     channel: {
       id: row.channelId,
       handle: row.channelHandle,
@@ -448,3 +455,14 @@ export async function listSeries(channelId: string, includeEmpty = false): Promi
       };
     });
 }
+
+/** Mark the episodes in a list that this viewer would have to pay for. */
+export async function withLocks<T extends VideoCard>(viewerId: string | null, list: T[]): Promise<T[]> {
+  const prices = await locksFor(
+    viewerId,
+    list.map((card) => ({ id: card.id, seriesId: card.seriesId, episodeNumber: card.episodeNumber, channelId: card.channel.id })),
+  );
+  if (prices.size === 0) return list;
+  return list.map((card) => (prices.has(card.id) ? { ...card, lockPrice: prices.get(card.id) } : card));
+}
+

@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { reports, users, videos } from "@/db/schema";
+import { refundVideoUnlocks } from "./earnings";
 import { mediaUrl } from "./storage";
 
 /** The moderation queue: open reports grouped by video, most-reported first. */
@@ -59,6 +60,8 @@ export async function removedVideos() {
 }
 
 export async function removeVideo(videoId: string, reason: string) {
+  // Viewers who paid for it and are still inside the refund window get their credits back.
+  await refundVideoUnlocks(videoId);
   await db.transaction(async (tx) => {
     await tx
       .update(videos)

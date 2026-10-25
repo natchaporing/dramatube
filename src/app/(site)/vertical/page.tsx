@@ -7,7 +7,7 @@ import { formatCount } from "@/lib/format";
 import { mediaUrl } from "@/lib/storage";
 import { pageContext } from "@/lib/viewer";
 import { issueViewTicket } from "@/lib/views";
-import { listVertical } from "@/lib/videos";
+import { listVertical, withLocks } from "@/lib/videos";
 
 export const metadata = { title: "Vertical" };
 
@@ -15,7 +15,11 @@ export default async function VerticalPage({ searchParams }: PageProps<"/vertica
   const params = await searchParams;
   const lead = typeof params.v === "string" ? params.v : null;
   const { user, t, locale, fmt } = await pageContext();
-  const list = await listVertical({ leadId: lead, limit: 40 });
+  // Locked episodes stay out of the swipe feed: it is the free sampler. A
+  // tall paid episode is reached from its series, where the paywall is.
+  const list = (await withLocks(user?.id ?? null, await listVertical({ leadId: lead, limit: 40 }))).filter(
+    (card) => card.lockPrice === undefined,
+  );
   if (list.length === 0) return <EmptyState title={t("vertical.empty")} />;
 
   const ids = list.map((video) => video.id);

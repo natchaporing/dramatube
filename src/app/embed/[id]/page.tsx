@@ -4,6 +4,7 @@ import { EmbedPlayer } from "@/components/embed-player";
 import { getT } from "@/lib/i18n/server";
 import { getWatchable } from "@/lib/videos";
 import { issueViewTicket } from "@/lib/views";
+import { lockFor } from "@/lib/access";
 
 export const metadata = { robots: { index: false } };
 
@@ -18,6 +19,19 @@ export default async function EmbedPage({ params, searchParams }: PageProps<"/em
   const { t } = await getT();
   const video = await getWatchable(id, null);
   const start = Number(query.t);
+
+  // Someone else's page cannot sell an episode: a locked one sends viewers here.
+  if (video && (await lockFor(null, video.id)).locked) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-black p-6 text-center">
+        <LogoMark className="h-8 w-8" />
+        <Link href={`/watch/${video.id}`} target="_blank" className="font-medium text-white hover:underline">
+          {video.title}
+        </Link>
+        <p className="text-sm text-muted">{t("paywall.embed")}</p>
+      </div>
+    );
+  }
 
   if (!video) {
     return (

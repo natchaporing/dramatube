@@ -29,6 +29,7 @@ import {
   sniffVideo,
   type AcceptedVideoType,
 } from "./media";
+import { refundVideoUnlocks } from "./earnings";
 import { deleteObject, putBuffer, putFile, uploadDir } from "./storage";
 
 /**
@@ -403,6 +404,8 @@ export async function updateVideo(
 /** Rows first, then files: a file without a row is invisible, a row without a file is a broken page. */
 export async function deleteVideo(userId: string, videoId: string, asAdmin = false): Promise<void> {
   const video = await ownedVideo(userId, videoId, asAdmin);
+  // Buyers inside the refund window get their credits back before the episode goes.
+  await refundVideoUnlocks(video.id);
   await db.delete(videos).where(eq(videos.id, video.id));
   await deleteObject(video.videoKey).catch(() => {});
   await deleteObject(video.thumbnailKey).catch(() => {});

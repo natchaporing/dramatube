@@ -21,9 +21,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { count, eq, sql } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { db, sql as client } from "../src/db";
-import { comments, reactions, subscriptions, users, videos, watchHistory } from "../src/db/schema";
+import { comments, purchases, reactions, sellers, series, subscriptions, users, videos, watchHistory } from "../src/db/schema";
+import { withReferral } from "../src/lib/referral";
+import { unlockEpisode } from "../src/lib/unlock";
+import { grantPurchase } from "../src/lib/wallet";
 import { newId, newObjectName } from "../src/lib/ids";
 import { publishVideo, receiveUpload } from "../src/lib/publish";
 import { createSeries } from "../src/lib/studio";
@@ -218,7 +221,7 @@ async function main() {
       return;
     }
     await db.execute(
-      sql`truncate table reports, api_tokens, watch_history, views, comments, reactions, subscriptions, uploads, videos, series, users cascade`,
+      sql`truncate table referrals, payouts, earnings, unlocks, credit_ledger, credit_lots, purchases, sellers, reports, api_tokens, watch_history, views, comments, reactions, subscriptions, uploads, videos, series, users cascade`,
     );
     // The rows named the files; with the rows gone, local files are orphans.
     if (env.storageDriver === "local") {
@@ -348,6 +351,35 @@ async function main() {
       await db.update(videos).set({ likeCount: sql`${videos.likeCount} + 1` }).where(eq(videos.id, video.id));
       await db.insert(watchHistory).values({ userId: ids.director, videoId: video.id, positionSec: 3 }).onConflictDoNothing();
     }
+
+    // Money: Neon Lotus sells both its series; Paper Moon has applied and waits
+    // for a moderator. The director has topped up once and bought an episode
+    // through Neon Lotus's own link, so every money screen has something on it.
+    await db.insert(sellers).values([
+      { userId: ids.neon, status: "approved", legalName: "Ploy Siriwan", promptpayId: "0812345678", birthDate: "1996-04-12", reviewedAt: new Date() },
+      { userId: ids.paper, status: "pending", legalName: "Arthit Chaiyaporn", promptpayId: "0898765432", birthDate: "1990-09-30" },
+    ]);
+    await db.update(series).set({ onSale: true, freeEpisodes: 2, episodePrice: 30 }).where(eq(series.id, seriesIds.bkk));
+    await db.update(series).set({ onSale: true, freeEpisodes: 1, episodePrice: 25, exclusiveSince: new Date() }).where(eq(series.id, seriesIds.love));
+    const purchaseId = newId("pur");
+    await db.insert(purchases).values({
+      id: purchaseId,
+      userId: ids.director,
+      packId: "regular",
+      credits: 300,
+      bonusCredits: 15,
+      amountSatang: 9_900,
+      method: "promptpay",
+      provider: "dev",
+      providerRef: `seed_${purchaseId}`,
+    });
+    await grantPurchase(purchaseId, 9_900);
+    const [bkk3] = await db
+      .select({ id: videos.id })
+      .from(videos)
+      .where(and(eq(videos.seriesId, seriesIds.bkk), eq(videos.episodeNumber, 3)))
+      .limit(1);
+    if (bkk3) await unlockEpisode(ids.director, bkk3.id, withReferral({}, ids.neon));
 
     console.log(`\nSeeded ${CHANNELS.length} channels and ${published.length} videos.`);
     console.log("Sign in as director@example.com / dramatube");

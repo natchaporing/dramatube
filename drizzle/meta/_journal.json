@@ -15,6 +15,13 @@
       "when": 1792894548836,
       "tag": "0001_view_network",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792902196793,
+      "tag": "0002_money",
+      "breakpoints": true
     }
   ]
 }

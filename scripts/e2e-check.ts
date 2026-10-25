@@ -255,6 +255,125 @@ async function main() {
     await a.goto(`${BASE}/watch/${secret.id}`);
     check(await a.isVisible(`h1:has-text("Secret episode ${run}")`), "…but plays for anyone with its link");
 
+    console.log("money");
+    const paidEpisodes: string[] = [];
+    await v.goto(`${BASE}/wallet`);
+    const canPay = !(await v.isVisible("text=Top-ups aren't set up"));
+    const moneyAdminContext = await browser.newContext();
+    const moneyAdmin = canPay ? await signIn(moneyAdminContext, ADMIN.email, ADMIN.password) : null;
+    if (!canPay || !moneyAdmin) {
+      console.log(`  – skipped: needs ALLOW_DEV_PAYMENTS=1 on the server and the operator account ${ADMIN.email}`);
+    } else {
+      // The creator applies to sell; a moderator approves.
+      await c.goto(`${BASE}/studio/earnings`);
+      await c.fill('input[name="legalName"]', "Somchai Jaidee");
+      await c.fill('input[name="promptpayId"]', "081-234-5678");
+      await c.fill('input[name="birthDate"]', "1995-05-05");
+      await c.click('[data-testid="apply-seller"]');
+      await c.waitForSelector("text=Your application is being checked.");
+      check(true, "a creator applies to sell");
+      await moneyAdmin.goto(`${BASE}/admin`);
+      await moneyAdmin.locator('[data-testid="seller-application"]', { hasText: `@e2ec${run}` }).locator('button:has-text("Approve")').click();
+      await moneyAdmin.waitForLoadState("networkidle");
+      await c.goto(`${BASE}/studio/earnings`);
+      check(await c.isVisible("text=You're a verified seller."), "a moderator approves the seller");
+
+      // Three public episodes join the series (it already has episode 1, and the unlisted episode 2).
+      for (let i = 0; i < 3; i++) {
+        const upload = await (
+          await fetch(`${BASE}/api/v1/uploads`, { method: "POST", headers: { ...auth, "Content-Type": "video/mp4" }, body: new Uint8Array(await readFile(clip)) })
+        ).json();
+        const episode = await (
+          await fetch(`${BASE}/api/v1/videos`, {
+            method: "POST",
+            headers: { ...auth, "Content-Type": "application/json" },
+            body: JSON.stringify({ uploadId: upload.uploadId, title: `Ferry Tales ${run} · part ${i + 3}`, visibility: "public", seriesId: series.id }),
+          })
+        ).json();
+        paidEpisodes.push(episode.id);
+      }
+      const [ep3, ep4, ep5] = paidEpisodes;
+
+      // The creator puts the series on sale: episode 1 free, 30 credits after that.
+      await c.goto(`${BASE}/studio/series`);
+      const card = c
+        .locator("form", { has: c.locator(`input[name="seriesId"][value="${series.id}"]`) })
+        .filter({ has: c.locator('[data-testid="on-sale"]') });
+      await card.locator('[data-testid="on-sale"]').check();
+      await card.locator('[data-testid="free-episodes"]').fill("1");
+      await card.locator('[data-testid="save-pricing"]').click();
+      await card.locator("text=Saved").waitFor();
+      check(true, "the creator puts the series on sale");
+
+      // A viewer meets the paywall, and the file itself is refused.
+      await c.goto(`${BASE}/watch/${ep3}`);
+      const ep3Src = await c.getAttribute("video", "src");
+      await v.goto(`${BASE}/watch/${ep3}`);
+      check(await v.isVisible('[data-testid="paywall"]'), "a paid episode shows the paywall");
+      check((await viewer.request.get(`${BASE}${ep3Src}`)).status() === 403, "a locked episode's file is refused, not just hidden");
+      await v.goto(`${BASE}/series/${series.id}`);
+      check((await v.locator('[data-testid="lock-badge"]').count()) >= 3, "the series page marks the locked episodes");
+
+      // Top up with the first-top-up offer, pay, come back, unlock.
+      await v.goto(`${BASE}/watch/${ep3}`);
+      await v.click('[data-testid="paywall"] a:has-text("Top up")');
+      await v.waitForURL(/\/wallet\?return=/);
+      await v.click('button:has-text("First top-up")');
+      await v.click('form button.btn-primary:has-text("Pay")');
+      await v.waitForURL(/\/wallet\/pay\//);
+      await v.click('[data-testid="simulate-payment"]');
+      await v.waitForSelector('[data-testid="payment-done"]');
+      check(await v.isVisible("text=Your balance is now 90 credits."), "a ฿19 top-up adds 90 credits");
+      await v.click("text=Back to the episode");
+      await v.waitForURL(`${BASE}/watch/${ep3}`);
+      await v.click('[data-testid="unlock-episode"]');
+      await v.waitForSelector("video", { timeout: 15_000 });
+      check(!(await v.isVisible('[data-testid="paywall"]')), "unlocking replaces the paywall with the player");
+      check((await v.textContent('[data-testid="credits-chip"]'))?.trim() === "60", "30 credits were spent");
+      check((await viewer.request.get(`${BASE}${ep3Src}`, { headers: { Range: "bytes=0-99" } })).status() === 206, "the buyer gets the file");
+
+      // The rest of the series at once: episodes 4 and 5 at 70%.
+      await v.goto(`${BASE}/watch/${ep4}`);
+      await v.click('[data-testid="unlock-rest"]');
+      await v.waitForSelector("video", { timeout: 15_000 });
+      check((await v.textContent('[data-testid="credits-chip"]'))?.trim() === "18", "the rest of the series costs 42 credits, not 60");
+
+      // Another viewer arrives through the creator's own link: a direct sale.
+      const third = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+      const w = await signUp(third, `E2E Fan ${run}`, `e2ef${run}`);
+      const refSent = w.waitForResponse((r) => r.url().endsWith("/api/ref"));
+      await w.goto(`${BASE}/@e2ec${run}?ref=e2ec${run}`);
+      check((await (await refSent).json()).recorded === true, "the creator's link is remembered");
+      await w.goto(`${BASE}/wallet?return=${encodeURIComponent(`/watch/${ep3}`)}`);
+      await w.click('button:has-text("315")');
+      await w.click('form button.btn-primary:has-text("Pay")');
+      await w.waitForURL(/\/wallet\/pay\//);
+      await w.click('[data-testid="simulate-payment"]');
+      await w.waitForSelector('[data-testid="payment-done"]');
+      await w.click("text=Back to the episode");
+      await w.click('[data-testid="unlock-episode"]');
+      await w.waitForSelector("video", { timeout: 15_000 });
+      check((await w.textContent('[data-testid="credits-chip"]'))?.trim() === "285", "bonus credits are spent first and the balance adds up");
+
+      // What the creator sees.
+      await c.goto(`${BASE}/studio/earnings`);
+      const rows = await c.locator('[data-testid="sale-row"]').allTextContents();
+      const credits = (await c.locator('[data-testid="sale-credits"]').allTextContents()).map(Number).sort((a, b) => a - b);
+      check(JSON.stringify(credits) === JSON.stringify([8, 8, 12, 21]), `earnings: 12 + 8 + 8 discovered, 21 direct (got ${credits.join(", ")})`);
+      check(rows.some((row) => row.includes("Your link")) && rows.filter((row) => row.includes("DramaTube")).length === 3, "each sale says where the viewer came from");
+      check(await c.isVisible("text=Held until"), "new earnings are held for the refund window");
+
+      // The creator deletes a sold episode: its buyer gets the credits back.
+      const gone = await fetch(`${BASE}/api/v1/videos/${ep5}`, { method: "DELETE", headers: auth });
+      paidEpisodes.splice(paidEpisodes.indexOf(ep5), 1);
+      await v.goto(`${BASE}/wallet`);
+      check(gone.status === 204 && (await v.textContent('[data-testid="wallet-balance"]'))?.trim() === "39", "a deleted episode refunds its buyers (18 + 21)");
+      await c.goto(`${BASE}/studio/earnings`);
+      check(await c.isVisible("text=Refunded"), "…and reverses the creator's earning");
+      await third.close();
+    }
+    await moneyAdminContext.close();
+
     console.log("language");
     await anon.addCookies([{ name: "dt_lang", value: "th", url: BASE }]);
     await a.goto(`${BASE}/`);
@@ -289,7 +408,7 @@ async function main() {
     }
 
     console.log("cleanup");
-    for (const id of [videoId, apiVideo.id, secret.id]) {
+    for (const id of [videoId, apiVideo.id, secret.id, ...paidEpisodes]) {
       const gone = await fetch(`${BASE}/api/v1/videos/${id}`, { method: "DELETE", headers: auth });
       check(gone.status === 204, `DELETE /api/v1/videos/${id}`);
     }

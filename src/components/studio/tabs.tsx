@@ -11,6 +11,7 @@ export function StudioTabs() {
   const tabs = [
     { href: "/studio", label: t("studio.content"), active: pathname === "/studio" || pathname.startsWith("/studio/videos") },
     { href: "/studio/series", label: t("studio.series"), active: pathname.startsWith("/studio/series") },
+    { href: "/studio/earnings", label: t("studio.earnings"), active: pathname.startsWith("/studio/earnings") },
     { href: "/studio/channel", label: t("studio.channel"), active: pathname.startsWith("/studio/channel") },
     { href: "/studio/api", label: t("studio.api"), active: pathname.startsWith("/studio/api") },
   ];

@@ -7,6 +7,7 @@ import clsx from "clsx";
 import {
   ArrowLeft,
   Clapperboard,
+  Coins,
   House,
   Languages,
   LayoutDashboard,
@@ -68,10 +69,13 @@ function useDismiss(open: boolean, close: () => void) {
 export function Shell({
   user,
   subscriptions,
+  credits,
   children,
 }: {
   user: ShellUser | null;
   subscriptions: ChannelRef[];
+  /** The signed-in viewer's credit balance, shown as a chip linking to the wallet. */
+  credits: number | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -123,6 +127,7 @@ export function Shell({
         </div>
         <div className={clsx("ml-auto flex items-center gap-1 sm:gap-2", searching && "hidden md:flex")}>
           <SearchIconButton onClick={() => setSearching(true)} />
+          {credits !== null && <CreditsChip credits={credits} />}
           <UploadButton />
           <LanguageMenu />
           {user ? <UserMenu user={user} /> : <SignInButton />}
@@ -211,6 +216,21 @@ function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
         <Search size={18} />
       </button>
     </form>
+  );
+}
+
+function CreditsChip({ credits }: { credits: number }) {
+  const { t } = useI18n();
+  return (
+    <Link
+      href="/wallet"
+      className="btn h-10 gap-1.5 border border-warn/30 bg-warn/10 px-3 text-warn hover:bg-warn/20"
+      aria-label={t("nav.credits", { count: credits })}
+      data-testid="credits-chip"
+    >
+      <Coins size={17} />
+      <span className="font-mono text-sm tabular-nums">{credits.toLocaleString()}</span>
+    </Link>
   );
 }
 
@@ -312,6 +332,9 @@ function UserMenu({ user }: { user: ShellUser }) {
             </Link>
             <Link href="/studio" className={item}>
               <LayoutDashboard size={18} /> {t("nav.studio")}
+            </Link>
+            <Link href="/wallet" className={item}>
+              <Coins size={18} /> {t("nav.wallet")}
             </Link>
             {user.isAdmin && (
               <Link href="/admin" className={item}>

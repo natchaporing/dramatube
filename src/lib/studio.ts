@@ -1,7 +1,15 @@
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { series, users } from "@/db/schema";
+import { sellers, series, users } from "@/db/schema";
 import { LIMITS } from "./catalog";
+import {
+  FREE_EPISODES_MAX,
+  FREE_EPISODES_MIN,
+  SERIES_PERCENT_MAX,
+  SERIES_PERCENT_MIN,
+  isEpisodePrice,
+  isExclusive,
+} from "./money";
 import { handleProblem, normalizeHandle } from "./handles";
 import { newId, newObjectName } from "./ids";
 import { checkImage, type ImageInput } from "./publish";
@@ -89,3 +97,58 @@ export async function updateChannel(
   if (bannerKey !== user.bannerKey) await deleteObject(user.bannerKey).catch(() => {});
   return { handle };
 }
+
+export interface PricingInput {
+  onSale: boolean;
+  freeEpisodes: number;
+  episodePrice: number;
+  seriesPricePercent: number;
+  exclusive: boolean;
+}
+
+/**
+ * What a series sells for. Only an approved seller can put a series on sale;
+ * anyone can set the numbers ahead of approval. Exclusivity is a 90-day
+ * commitment: once switched on it cannot be switched off inside the window.
+ */
+export async function updateSeriesPricing(channelId: string, seriesId: string, input: PricingInput) {
+  const [row] = await db
+    .select({ exclusiveSince: series.exclusiveSince })
+    .from(series)
+    .where(and(eq(series.id, seriesId), eq(series.channelId, channelId)))
+    .limit(1);
+  if (!row) throw new StudioError("not_found");
+  if (!isEpisodePrice(input.episodePrice)) throw new StudioError("price");
+  const freeEpisodes = Math.round(input.freeEpisodes);
+  if (!(freeEpisodes >= FREE_EPISODES_MIN && freeEpisodes <= FREE_EPISODES_MAX)) throw new StudioError("free");
+  const percent = Math.round(input.seriesPricePercent);
+  if (!(percent >= SERIES_PERCENT_MIN && percent <= SERIES_PERCENT_MAX)) throw new StudioError("percent");
+  if (input.onSale) {
+    const [seller] = await db.select({ status: sellers.status }).from(sellers).where(eq(sellers.userId, channelId)).limit(1);
+    if (seller?.status !== "approved") throw new StudioError("not_seller");
+  }
+  let exclusiveSince = row.exclusiveSince;
+  if (input.exclusive && !isExclusive(exclusiveSince)) exclusiveSince = new Date();
+  if (!input.exclusive && !isExclusive(exclusiveSince)) exclusiveSince = null;
+  await db
+    .update(series)
+    .set({ onSale: input.onSale, freeEpisodes, episodePrice: input.episodePrice, seriesPricePercent: percent, exclusiveSince, updatedAt: new Date() })
+    .where(eq(series.id, seriesId));
+}
+
+/** Pricing for every series a channel owns, keyed by series id. */
+export async function ownSeriesPricing(channelId: string) {
+  const rows = await db
+    .select({
+      id: series.id,
+      onSale: series.onSale,
+      freeEpisodes: series.freeEpisodes,
+      episodePrice: series.episodePrice,
+      seriesPricePercent: series.seriesPricePercent,
+      exclusiveSince: series.exclusiveSince,
+    })
+    .from(series)
+    .where(eq(series.channelId, channelId));
+  return new Map(rows.map((row) => [row.id, row]));
+}
+

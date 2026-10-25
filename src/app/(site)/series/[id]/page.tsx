@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { series, users } from "@/db/schema";
 import { mediaUrl } from "@/lib/storage";
 import { pageContext } from "@/lib/viewer";
-import { seriesEpisodes } from "@/lib/videos";
+import { seriesEpisodes, withLocks } from "@/lib/videos";
 
 async function load(id: string) {
   const [row] = await db
@@ -33,7 +33,7 @@ export default async function SeriesPage({ params }: PageProps<"/series/[id]">) 
 
   const own = user?.id === row.channel.id;
   // A stranger sees the public episodes; the owner sees every one, labelled.
-  const episodes = await seriesEpisodes(id, own);
+  const episodes = await withLocks(user?.id ?? null, await seriesEpisodes(id, own));
   const cover = episodes[0]?.thumbnailUrl ?? null;
 
   return (

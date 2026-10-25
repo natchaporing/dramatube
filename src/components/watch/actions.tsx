@@ -207,7 +207,16 @@ function CopyField({ value, label }: { value: string; label: string }) {
   );
 }
 
-export function ShareButton({ videoId, embeddable }: { videoId: string; embeddable: boolean }) {
+export function ShareButton({
+  videoId,
+  embeddable,
+  refHandle,
+}: {
+  videoId: string;
+  embeddable: boolean;
+  /** The creator sharing their own video: their link carries their tag, so its sales are direct. */
+  refHandle?: string;
+}) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [origin, setOrigin] = useState("");
@@ -220,7 +229,10 @@ export function ShareButton({ videoId, embeddable }: { videoId: string; embeddab
     setOpen(true);
   };
   const [useStart, setUseStart] = useState(false);
-  const link = `${origin}/watch/${videoId}${useStart && startAt ? `?t=${startAt}` : ""}`;
+  const query = new URLSearchParams();
+  if (refHandle) query.set("ref", refHandle);
+  if (useStart && startAt) query.set("t", String(startAt));
+  const link = `${origin}/watch/${videoId}${query.size ? `?${query.toString()}` : ""}`;
   const embed = `<iframe width="560" height="315" src="${origin}/embed/${videoId}" title="DramaTube video player" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
 
   return (
@@ -231,7 +243,8 @@ export function ShareButton({ videoId, embeddable }: { videoId: string; embeddab
       {open && (
         <Dialog title={t("share.title")} onClose={() => setOpen(false)}>
           <div className="space-y-4">
-            <CopyField value={link} label={t("share.link")} />
+            <CopyField value={link} label={refHandle ? t("earn.shareTitle") : t("share.link")} />
+            {refHandle && <p className="text-xs text-muted">{t("earn.shareHint")}</p>}
             {startAt !== null && (
               <label className="flex items-center gap-2 text-sm text-muted">
                 <input type="checkbox" checked={useStart} onChange={(event) => setUseStart(event.target.checked)} />

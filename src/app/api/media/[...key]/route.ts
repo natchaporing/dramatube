@@ -8,6 +8,7 @@ import { currentUser } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { contentTypeFor, parseRange } from "@/lib/range";
 import { isSafeKey, localPath, presignedGetUrl } from "@/lib/storage";
+import { isPaidEpisode, locksFor, saleOf } from "@/lib/access";
 import { canWatch } from "@/lib/videos";
 
 /**
@@ -29,17 +30,39 @@ async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">
   const [kind, videoId] = parts;
   if (kind === "videos" || kind === "thumbs") {
     const [video] = await db
-      .select({ channelId: videos.channelId, visibility: videos.visibility, status: videos.status })
+      .select({
+        id: videos.id,
+        channelId: videos.channelId,
+        visibility: videos.visibility,
+        status: videos.status,
+        seriesId: videos.seriesId,
+        episodeNumber: videos.episodeNumber,
+      })
       .from(videos)
       .where(eq(videos.id, videoId ?? ""))
       .limit(1);
     if (!video) return new Response("Not found", { status: 404 });
     const open = video.status === "ready" && video.visibility !== "private";
-    if (!open && !canWatch(video, await currentUser())) return new Response("Not found", { status: 404 });
-    // A video's key stays the same when it goes private or is taken down, so
-    // a long cache would keep serving it from a CDN or a browser afterwards.
-    // Five minutes bounds that; anything not public is never cached at all.
-    cacheControl = open && video.visibility === "public" ? "public, max-age=300" : "private, no-store";
+    let viewer: Awaited<ReturnType<typeof currentUser>> | undefined;
+    const who = async () => (viewer === undefined ? (viewer = await currentUser()) : viewer);
+    if (!open && !canWatch(video, await who())) return new Response("Not found", { status: 404 });
+
+    // A paid episode's file goes only to its creator and the people who
+    // bought it. The thumbnail stays public: it is the shop window.
+    let paid = false;
+    if (kind === "videos" && video.seriesId) {
+      const sale = await saleOf(video.seriesId);
+      paid = isPaidEpisode(sale, video.episodeNumber);
+      if (paid) {
+        const user = await who();
+        const locked = (await locksFor(user?.id ?? null, [video])).size > 0;
+        if (locked) return new Response("This episode is locked", { status: 403 });
+      }
+    }
+    // A video's key stays the same when it goes private, is taken down or
+    // goes on sale, so a shared cache must never hold more than a few
+    // minutes of a free public file, and never any paid or non-public one.
+    cacheControl = open && video.visibility === "public" && !paid ? "public, max-age=300" : "private, no-store";
   } else if (kind !== "avatars" && kind !== "banners") {
     return new Response("Not found", { status: 404 });
   }

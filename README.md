@@ -285,6 +285,30 @@ paid with its reference on the Moderation page. An approved seller cannot
 re-apply (it would take their series off sale); changing a payout account
 goes through support for now.
 
+**Protecting what is sold.** No website can stop a paying viewer filming
+their screen, so the aim is that copying is slow, traceable and quickly undone:
+
+- *A bought episode carries its buyer's handle* — `@handle · DramaTube`,
+  drifting slowly round the picture — so a recording says whose account it
+  came from. Full screen takes the whole frame, watermark included; the
+  browser's own full-screen, download, picture-in-picture and casting are
+  switched off for paid episodes. (iPhone Safari ignores those switches: its
+  own full screen shows the video without the watermark.)
+- *Two browsers at a time.* A paid file streams to at most two signed-in
+  browsers per account at once; a third is offered "Watch here instead",
+  which takes over. A browser is its sign-in (a hash of the session), and
+  counts as streaming for three minutes after it last fetched a paid file.
+- *Somebody else's file is refused.* Every upload is hashed as it streams
+  in, and so is the file as stored; another channel's upload matching either
+  is refused at once, with a pointer to the copyright report. A re-encoded
+  copy needs a fingerprint, which is not built yet.
+- *Signed file links last ten minutes* when files are on S3.
+- *Copyright reports come first* in the moderation queue, in red: a stolen
+  episode earns for the thief every hour it stays up. Removing it refunds its
+  buyers and takes the earnings back.
+- *The swipe feed leaves paid episodes out*, bought or not; they play on
+  their watch page, under the watermark.
+
 **Undoing a sale.** If a sold episode is removed, deleted or made private,
 every buyer gets their credits back, into the lots they came from (so bonus
 credits keep their expiry). If money goes back to a card — a refund or a
@@ -374,9 +398,14 @@ In rough order of what real traffic would demand first:
 7. **Recommendations** beyond "same series, same channel, same category,
    trending", and **notifications** when a subscribed channel publishes or a
    saved series premieres.
-8. **Swipe to the next episode** in the player, and an episode grid beside
+8. **Stronger copy protection**: a fingerprint of each video, so a
+   re-encoded or re-cut copy is caught at upload; encrypted streaming (HLS)
+   with DRM through a video service, giving browsers 720p and keeping the
+   file off the page; two-step sign-in for sellers; and a takedown kit
+   creators can send to TikTok and Facebook.
+9. **Swipe to the next episode** in the player, and an episode grid beside
    it as on the series page. **Reporting a series** (its poster or blurb):
    today only episodes can be reported.
-9. **Captions** (WebVTT tracks; DramaStudio already has the dialogue).
-10. **Provenance metadata** (C2PA) read from uploads and shown beside the
+10. **Captions** (WebVTT tracks; DramaStudio already has the dialogue).
+11. **Provenance metadata** (C2PA) read from uploads and shown beside the
     creator's own disclosure.

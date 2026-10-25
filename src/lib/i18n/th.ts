@@ -244,6 +244,7 @@ export const th: Record<MessageKey, string> = {
   "upload.error.invalid": "มีบางช่องที่ต้องแก้ไข: {detail}",
   "upload.error.not_found": "ไม่พบวิดีโอนี้",
   "upload.error.network": "การเชื่อมต่อขาดหาย",
+  "upload.error.duplicate": "วิดีโอนี้มีอยู่แล้วบน DramaTube จากช่องอื่น ถ้าเป็นผลงานของคุณ กรุณารายงานด้วยเหตุผล “ใช้ผลงานของฉันโดยไม่ได้รับอนุญาต”",
   "upload.error.too_many_uploads": "คุณมีไฟล์ที่อัปโหลดแล้วแต่ยังไม่เผยแพร่ครบ 3 ไฟล์ กรุณาเผยแพร่ก่อน หรือรอสักครู่ให้ไฟล์ที่ไม่ได้เผยแพร่หมดอายุ",
   "upload.duration": "ความยาว {duration}",
   "upload.size": "{width}×{height}",
@@ -572,6 +573,9 @@ export const th: Record<MessageKey, string> = {
   "trope.return-of-the-exile": "การกลับมาของผู้ถูกเนรเทศ",
   "trope.the-long-con": "แผนลวงระยะยาว",
 
+  "watch.fullscreen": "เต็มจอ",
+  "watch.tooManyDevices": "บัญชีนี้กำลังดูตอนที่ซื้อบนอุปกรณ์อื่นอยู่แล้ว {count} เครื่อง",
+  "watch.watchHere": "ดูที่เครื่องนี้แทน",
   "common.cancel": "ยกเลิก",
   "common.close": "ปิด",
   "common.optional": "ไม่บังคับ",

@@ -105,7 +105,10 @@ export default async function AdminPage() {
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {item.reasons.map((reason) => (
-                      <span key={reason} className="rounded-full bg-raised px-2.5 py-0.5 text-xs text-text">
+                      <span
+                        key={reason}
+                        className={reason === "copyright" ? "rounded-full bg-bad-dim px-2.5 py-0.5 text-xs font-semibold text-bad" : "rounded-full bg-raised px-2.5 py-0.5 text-xs text-text"}
+                      >
                         {t(`report.reason.${reason as "other"}`)}
                       </span>
                     ))}

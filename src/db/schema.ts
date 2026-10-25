@@ -102,6 +102,13 @@ export const videos = pgTable(
 
     videoKey: text("video_key").notNull(),
     mimeType: text("mime_type").notNull(),
+    /**
+     * SHA-256 of the file as uploaded and as stored (they differ when the
+     * upload was rewritten for streaming). Another channel's upload matching
+     * either is somebody else's video, and is refused.
+     */
+    uploadHash: text("upload_hash"),
+    fileHash: text("file_hash"),
     byteSize: bigint("byte_size", { mode: "number" }).notNull(),
     thumbnailKey: text("thumbnail_key"),
     durationSec: real("duration_sec").notNull().default(0),
@@ -137,6 +144,8 @@ export const videos = pgTable(
     index("videos_channel_idx").on(t.channelId, t.publishedAt),
     index("videos_feed_idx").on(t.visibility, t.status, t.publishedAt),
     index("videos_series_idx").on(t.seriesId, t.episodeNumber),
+    index("videos_upload_hash_idx").on(t.uploadHash),
+    index("videos_file_hash_idx").on(t.fileHash),
     // What every shelf adds up: a series' episodes that strangers can watch.
     index("videos_series_listed_idx")
       .on(t.seriesId, t.episodeNumber)
@@ -303,8 +312,27 @@ export const uploads = pgTable("uploads", {
   path: text("path").notNull(),
   mimeType: text("mime_type").notNull(),
   byteSize: bigint("byte_size", { mode: "number" }).notNull(),
+  /** SHA-256 of the bytes received, worked out while they streamed in. */
+  contentHash: text("content_hash"),
   createdAt: createdAt(),
 });
+
+/**
+ * Where an account is streaming paid episodes from: one row per signed-in
+ * browser (a hash of its session, never the session itself). Two may stream
+ * at once; a third has to take over from them.
+ */
+export const playbackSessions = pgTable(
+  "playback_sessions",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceKey: text("device_key").notNull(),
+    lastSeen: timestamp("last_seen", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.deviceKey] })],
+);
 
 export type User = typeof users.$inferSelect;
 export type Video = typeof videos.$inferSelect;

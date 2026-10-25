@@ -4,7 +4,10 @@ import { Readable } from "node:stream";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { videos } from "@/db/schema";
+import { cookies } from "next/headers";
 import { currentUser } from "@/lib/auth";
+import { SESSION_COOKIE, isAdmin } from "@/lib/session";
+import { MAX_STREAMS, claimStream, deviceKey } from "@/lib/streams";
 import { env } from "@/lib/env";
 import { contentTypeFor, parseRange } from "@/lib/range";
 import { isSafeKey, localPath, presignedGetUrl } from "@/lib/storage";
@@ -57,6 +60,17 @@ async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">
         const user = await who();
         const locked = (await locksFor(user ?? null, [video])).size > 0;
         if (locked) return new Response("This episode is locked", { status: 403 });
+        // A buyer streams on two browsers at a time; the creator and moderators are not counted.
+        if (user && user.id !== video.channelId && !isAdmin(user)) {
+          const token = (await cookies()).get(SESSION_COOKIE)?.value ?? "";
+          const claim = await claimStream(user.id, deviceKey(token));
+          if (!claim.ok) {
+            return new Response("Playing on too many devices", {
+              status: 409,
+              headers: { "X-Stream-Limit": String(MAX_STREAMS), "Cache-Control": "no-store" },
+            });
+          }
+        }
       }
     }
     // A video's key stays the same when it goes private, is taken down or
@@ -68,9 +82,16 @@ async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">
   }
 
   if (env.storageDriver === "s3") {
+    // A signed link works for whoever holds it, so a video's lasts ten
+    // minutes and the redirect to it two: long enough to buffer an episode,
+    // too short to be worth passing round. Pictures can keep theirs an hour.
+    const video = kind === "videos";
     return new Response(null, {
       status: 302,
-      headers: { Location: presignedGetUrl(key, 3600), "Cache-Control": "private, max-age=600" },
+      headers: {
+        Location: presignedGetUrl(key, video ? 600 : 3600),
+        "Cache-Control": video ? "private, max-age=120" : "private, max-age=600",
+      },
     });
   }
 

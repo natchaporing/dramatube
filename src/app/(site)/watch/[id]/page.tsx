@@ -16,7 +16,7 @@ import { getWatchable, seriesEpisodes, upNext, withLocks } from "@/lib/videos";
 import { currentUser } from "@/lib/auth";
 import { issueViewTicket } from "@/lib/views";
 import { Paywall } from "@/components/watch/paywall";
-import { lockFor } from "@/lib/access";
+import { isPaidEpisode, lockFor } from "@/lib/access";
 import { restOfSeries } from "@/lib/unlock";
 import { balanceOf } from "@/lib/wallet";
 
@@ -120,6 +120,9 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
             next={nextUp ? { id: nextUp.id, title: nextUp.title } : null}
             countable={video.status === "ready" && !own}
             viewTicket={issueViewTicket(video.id)}
+            // A bought episode carries its buyer's handle across the picture: a
+            // recording of it says whose account it came from.
+            protect={user && !own && !admin && isPaidEpisode(lock.sale, video.episodeNumber) ? { watermark: `@${user.handle} · DramaTube` } : null}
           />
         )}
 

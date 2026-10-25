@@ -1,9 +1,10 @@
-import { createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { and, count, eq, lt, max, ne } from "drizzle-orm";
+import { and, count, eq, lt, max, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { series, uploads, videos, type Video } from "@/db/schema";
@@ -52,7 +53,8 @@ export class PublishError extends Error {
       | "series_missing"
       | "invalid"
       | "not_found"
-      | "too_many_uploads",
+      | "too_many_uploads"
+      | "duplicate",
     public readonly detail?: string,
   ) {
     super(detail ? `${code}: ${detail}` : code);
@@ -105,11 +107,13 @@ async function streamToDisk(userId: string, body: ReadableStream<Uint8Array>, li
   const path = join(dir, `${uploadId}.part`);
 
   let received = 0;
+  const hash = createHash("sha256");
   const meter = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       received += chunk.length;
-      if (received > limit) callback(new PublishError("too_large"));
-      else callback(null, chunk);
+      if (received > limit) return callback(new PublishError("too_large"));
+      hash.update(chunk);
+      callback(null, chunk);
     },
   });
 
@@ -118,7 +122,10 @@ async function streamToDisk(userId: string, body: ReadableStream<Uint8Array>, li
     if (received === 0) throw new PublishError("empty");
     const mimeType = sniffVideo(await readHead(path));
     if (!mimeType) throw new PublishError("not_a_video");
-    await db.insert(uploads).values({ id: uploadId, userId, path, mimeType, byteSize: received });
+    const contentHash = hash.digest("hex");
+    // Said at once, rather than after somebody has filled in the details.
+    if (await someoneElses(userId, contentHash)) throw new PublishError("duplicate");
+    await db.insert(uploads).values({ id: uploadId, userId, path, mimeType, byteSize: received, contentHash });
     return { uploadId, byteSize: received, mimeType };
   } catch (error) {
     await unlink(path).catch(() => {});
@@ -227,6 +234,27 @@ export function checkImage(image: ImageInput | null | undefined) {
   return { data: image.data, type, ext: IMAGE_EXTENSIONS[type] };
 }
 
+async function hashFile(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+  return hash.digest("hex");
+}
+
+/**
+ * Whether these bytes are already another channel's video — uploaded by
+ * them, or downloaded from DramaTube as served. Catches a stolen file
+ * re-uploaded as it is; a re-encoded copy needs a fingerprint, not a hash.
+ * The same channel uploading its own file twice is its own business.
+ */
+async function someoneElses(channelId: string, hash: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: videos.id })
+    .from(videos)
+    .where(and(ne(videos.channelId, channelId), or(eq(videos.uploadHash, hash), eq(videos.fileHash, hash))))
+    .limit(1);
+  return Boolean(row);
+}
+
 async function resolveSeries(channelId: string, seriesId: string | null, episodeNumber: number | null, exceptVideoId?: string) {
   if (!seriesId) return { seriesId: null, episodeNumber: null };
   const [owned] = await db
@@ -282,6 +310,11 @@ export async function publishVideo(
     } catch {
       throw new PublishError("upload_missing");
     }
+    const uploadHash = upload.contentHash ?? (await hashFile(upload.path));
+    if (await someoneElses(userId, uploadHash)) {
+      await unlink(upload.path).catch(() => {});
+      throw new PublishError("duplicate");
+    }
 
     let mimeType = upload.mimeType as AcceptedVideoType;
     let durationSec = Math.max(0, input.clientDurationSec ?? 0);
@@ -305,6 +338,13 @@ export async function publishVideo(
       thumbData = await extractThumbnail(upload.path, Math.min(5, durationSec * 0.1));
       thumbExt = "jpg";
       thumbType = "image/jpeg";
+    }
+
+    // Rewritten for streaming, it is the file people will be served — and could download.
+    const fileHash = ffmpeg ? await hashFile(upload.path) : uploadHash;
+    if (fileHash !== uploadHash && (await someoneElses(userId, fileHash))) {
+      await unlink(upload.path).catch(() => {});
+      throw new PublishError("duplicate");
     }
 
     videoKey = `videos/${id}/${newObjectName()}.${VIDEO_EXTENSIONS[mimeType]}`;
@@ -333,6 +373,8 @@ export async function publishVideo(
         videoKey,
         mimeType,
         byteSize,
+        uploadHash,
+        fileHash,
         thumbnailKey,
         durationSec,
         width,

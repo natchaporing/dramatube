@@ -115,6 +115,14 @@ export async function locksFor(viewer: Viewer, episodes: EpisodeLike[]): Promise
   );
 }
 
+/** Which episodes in a list are for sale at all, bought or not. */
+export async function paidEpisodes(episodes: EpisodeLike[]): Promise<Set<string>> {
+  const inSeries = episodes.filter((episode) => episode.seriesId);
+  if (inSeries.length === 0) return new Set();
+  const sales = await salesFor(inSeries.map((episode) => episode.seriesId!));
+  return new Set(inSeries.filter((episode) => isPaidEpisode(sales.get(episode.seriesId!), episode.episodeNumber)).map((episode) => episode.id));
+}
+
 export interface EpisodeLock {
   locked: boolean;
   price: number;

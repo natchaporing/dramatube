@@ -29,6 +29,13 @@
       "when": 1792912081814,
       "tag": "0003_drama_home",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792922018894,
+      "tag": "0004_video_protection",
+      "breakpoints": true
     }
   ]
 }

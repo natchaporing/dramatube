@@ -4,7 +4,11 @@ import { reports, users, videos } from "@/db/schema";
 import { refundVideoUnlocks } from "./refunds";
 import { mediaUrl } from "./storage";
 
-/** The moderation queue: open reports grouped by video, most-reported first. */
+/**
+ * The moderation queue: open reports grouped by video. Copyright claims
+ * first — a stolen episode earns money for the thief every hour it stays
+ * up — then the most-reported.
+ */
 export async function openReports() {
   const grouped = await db
     .select({
@@ -16,7 +20,7 @@ export async function openReports() {
     .from(reports)
     .where(isNull(reports.resolvedAt))
     .groupBy(reports.videoId)
-    .orderBy(desc(sql`count(*)`), desc(sql`max(${reports.createdAt})`))
+    .orderBy(desc(sql`bool_or(${reports.reason} = 'copyright')`), desc(sql`count(*)`), desc(sql`max(${reports.createdAt})`))
     .limit(100);
   if (grouped.length === 0) return [];
   const ids = grouped.map((row) => row.videoId);

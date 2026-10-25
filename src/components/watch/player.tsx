@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import clsx from "clsx";
+import { Maximize, MonitorSmartphone } from "lucide-react";
 import { formatDuration, isVertical } from "@/lib/format";
+import { MAX_STREAMS } from "@/lib/stream-limit";
 import { useT } from "../i18n";
 
 export const SEEK_EVENT = "dramatube:seek";
@@ -76,6 +78,7 @@ export function Player({
   next,
   countable,
   viewTicket,
+  protect = null,
 }: {
   videoId: string;
   src: string;
@@ -88,6 +91,8 @@ export function Player({
   next: { id: string; title: string } | null;
   countable: boolean;
   viewTicket: string;
+  /** A paid episode, watched by a buyer: their handle over the picture, and no ways round it the browser offers. */
+  protect?: { watermark: string } | null;
 }) {
   const t = useT();
   const router = useRouter();
@@ -98,7 +103,51 @@ export function Player({
   const lastSaved = useRef(0);
   const [resumedAt, setResumedAt] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [tooMany, setTooMany] = useState(false);
+  const frame = useRef<HTMLDivElement>(null);
   const tall = isVertical(width, height);
+
+  // A paid file refused mid-way may be the account's device limit: ask the
+  // server why, and offer to take over rather than showing a broken player.
+  const onError = async () => {
+    if (!protect) return;
+    try {
+      const response = await fetch(src, { method: "HEAD", cache: "no-store" });
+      if (response.status === 409) {
+        ref.current?.pause();
+        setTooMany(true);
+      }
+    } catch {
+      /* offline: the browser's own error stands */
+    }
+  };
+
+  // The refusal can arrive before the page is interactive, when no handler
+  // was listening yet: look once on mount for an error already there.
+  useEffect(() => {
+    if (ref.current?.error) void onError();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId]);
+
+  const watchHere = async () => {
+    await fetch("/api/playback/takeover", { method: "POST" }).catch(() => {});
+    setTooMany(false);
+    const video = ref.current;
+    if (!video) return;
+    const at = video.currentTime;
+    video.load();
+    video.currentTime = at;
+    void video.play().catch(() => {});
+  };
+
+  // The browser's own full screen would show the video alone, without the
+  // watermark over it; this one takes the frame and everything in it.
+  const fullscreen = () => {
+    const element = frame.current;
+    if (!element) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void element.requestFullscreen?.().catch(() => {});
+  };
 
   // Seek requests from timestamps in the description and comments.
   useEffect(() => {
@@ -195,7 +244,13 @@ export function Player({
   }, [countdown, next, router]);
 
   return (
-    <div className={clsx("relative overflow-hidden bg-black sm:rounded-xl", tall ? "mx-auto aspect-[9/16] max-h-[78vh]" : "aspect-video")}>
+    <div
+      ref={frame}
+      className={clsx(
+        "relative overflow-hidden bg-black sm:rounded-xl [&:fullscreen]:aspect-auto [&:fullscreen]:max-h-none [&:fullscreen]:rounded-none",
+        tall ? "mx-auto aspect-[9/16] max-h-[78vh]" : "aspect-video",
+      )}
+    >
       <video
         ref={ref}
         key={videoId}
@@ -206,6 +261,12 @@ export function Player({
         playsInline
         preload="metadata"
         className="h-full w-full"
+        // No "Save video" in the browser's menus. It stops a casual save, not a determined one.
+        controlsList={protect ? "nodownload nofullscreen noremoteplayback" : "nodownload"}
+        disablePictureInPicture={Boolean(protect)}
+        disableRemotePlayback={Boolean(protect)}
+        onContextMenu={(event) => event.preventDefault()}
+        onError={onError}
         onTimeUpdate={onTimeUpdate}
         onSeeking={() => (lastTick.current = null)}
         // At the end the browser pauses, then ends: the pause must not overwrite "finished".
@@ -213,6 +274,34 @@ export function Player({
         onEnded={onEnded}
         onPlay={() => setCountdown(null)}
       />
+      {protect && (
+        <>
+          <span
+            className="dt-watermark pointer-events-none absolute select-none whitespace-nowrap text-sm font-semibold text-white/45 [text-shadow:0_1px_3px_rgba(0,0,0,.8)]"
+            data-testid="watermark"
+            aria-hidden="true"
+          >
+            {protect.watermark}
+          </span>
+          <button
+            type="button"
+            onClick={fullscreen}
+            className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
+            aria-label={t("watch.fullscreen")}
+          >
+            <Maximize size={16} />
+          </button>
+        </>
+      )}
+      {tooMany && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 p-6 text-center" data-testid="too-many-devices">
+          <MonitorSmartphone size={28} className="text-warn" />
+          <p className="max-w-sm text-sm text-white">{t("watch.tooManyDevices", { count: MAX_STREAMS })}</p>
+          <button className="btn btn-primary" onClick={watchHere} data-testid="watch-here">
+            {t("watch.watchHere")}
+          </button>
+        </div>
+      )}
       {resumedAt !== null && (
         <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/75 px-2 py-1 text-xs text-white">
           {t("watch.resume", { time: formatDuration(resumedAt) })}

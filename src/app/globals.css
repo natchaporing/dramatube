@@ -118,3 +118,20 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/*
+ * The buyer's handle over a paid episode, drifting slowly round the frame so
+ * a recording cannot crop it out without cropping the picture.
+ */
+@keyframes dt-watermark {
+  0% { top: 8%; left: 6%; }
+  20% { top: 62%; left: 58%; }
+  40% { top: 24%; left: 46%; }
+  60% { top: 78%; left: 10%; }
+  80% { top: 40%; left: 62%; }
+  100% { top: 8%; left: 6%; }
+}
+
+.dt-watermark {
+  animation: dt-watermark 90s linear infinite;
+}

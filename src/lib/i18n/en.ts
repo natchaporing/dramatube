@@ -248,6 +248,7 @@ export const en = {
   "upload.error.invalid": "Some fields need fixing: {detail}",
   "upload.error.not_found": "That video doesn't exist.",
   "upload.error.network": "the connection dropped",
+  "upload.error.duplicate": "This video is already on DramaTube from another channel. If it's yours, report the copy with “Uses my work without permission”.",
   "upload.error.too_many_uploads": "You have three uploads waiting to be published. Publish one, or wait a few hours for unpublished ones to expire.",
   "upload.duration": "Length {duration}",
   "upload.size": "{width}×{height}",
@@ -576,6 +577,9 @@ export const en = {
   "trope.return-of-the-exile": "Return of the Exile",
   "trope.the-long-con": "The Long Con",
 
+  "watch.fullscreen": "Full screen",
+  "watch.tooManyDevices": "This account is already watching paid episodes on {count} other devices.",
+  "watch.watchHere": "Watch here instead",
   "common.cancel": "Cancel",
   "common.close": "Close",
   "common.optional": "optional",

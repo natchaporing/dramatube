@@ -66,6 +66,9 @@ async function main() {
     "-v", "error", "-y",
     "-f", "lavfi", "-i", "testsrc2=s=640x360:rate=25:duration=4",
     "-f", "lavfi", "-i", "sine=frequency=330:duration=4",
+    // Tagged with the run, so each run's file is its own: DramaTube refuses
+    // another channel's file, and an earlier run's may still be there.
+    "-metadata", `comment=dramatube-e2e-${run}`,
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip,
   ]);
   if (made.status !== 0) throw new Error("ffmpeg is needed to make the test video");
@@ -458,6 +461,35 @@ async function main() {
       await w.waitForSelector("video", { timeout: 15_000 });
       check((await w.textContent('[data-testid="credits-chip"]'))?.trim() === "250", "…and the new price, once shown, is what is charged");
       await third.close();
+
+      console.log("protection");
+      await v.goto(`${BASE}/watch/${ep3}`);
+      check((await v.textContent('[data-testid="watermark"]'))?.includes(`@e2ev${run}`), "a bought episode carries its buyer's handle across the picture");
+      check(
+        (await v.getAttribute("video", "controlslist"))?.includes("nodownload") && (await v.getAttribute("video", "disablepictureinpicture")) !== null,
+        "…with no download or picture-in-picture in the player",
+      );
+      // The same account signed in on two more browsers: the third is one too many.
+      const second = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+      const thirdDevice = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+      await signIn(second, `e2ev${run}@e2e.example`, "e2e-password");
+      const d3 = await signIn(thirdDevice, `e2ev${run}@e2e.example`, "e2e-password");
+      const range = { headers: { Range: "bytes=0-99" } };
+      check((await second.request.get(`${BASE}${ep3Src}`, range)).status() === 206, "a buyer streams on a second browser");
+      check((await thirdDevice.request.get(`${BASE}${ep3Src}`, range)).status() === 409, "…but not a third at the same time");
+      await d3!.goto(`${BASE}/watch/${ep3}`);
+      await d3!.waitForSelector('[data-testid="too-many-devices"]', { timeout: 15_000 });
+      await d3!.click('[data-testid="watch-here"]');
+      await d3!.waitForSelector('[data-testid="too-many-devices"]', { state: "detached" });
+      check((await thirdDevice.request.get(`${BASE}${ep3Src}`, range)).status() === 206, "…until it takes over from the others");
+      await second.close();
+      await thirdDevice.close();
+
+      // Somebody else's file, uploaded as their own: refused before they type a word.
+      await v.goto(`${BASE}/upload`);
+      await v.setInputFiles('[data-testid="video-file"]', clip);
+      await v.waitForSelector("text=already on DramaTube from another channel", { timeout: 60_000 });
+      check(true, "uploading another channel's video file is refused");
     }
     await moneyAdminContext.close();
 

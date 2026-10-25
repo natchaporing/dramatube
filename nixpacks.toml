@@ -1,0 +1,7 @@
+# ffmpeg, for reading what was uploaded.
+#
+# Without it an upload is trusted for its own duration and dimensions and has
+# no thumbnail unless the browser cut one. Nixpacks builds a Node image with no
+# media tooling, so it has to be asked for.
+[phases.setup]
+nixPkgs = ["...", "ffmpeg"]

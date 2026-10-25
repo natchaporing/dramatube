@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/*
+ * DramaTube.
+ *
+ * A dark room, because people judge pictures against a dark surround and this
+ * is a site of pictures. The chrome stays out of the way in three greys; one
+ * rose carries every primary action, and one violet is spent on exactly one
+ * thing — saying how a video was made. Nothing else on the page is violet, so
+ * the disclosure is never mistaken for decoration.
+ */
+@theme {
+  --color-ground: #0e0e11;
+  --color-surface: #16161b;
+  --color-raised: #212128;
+  --color-hover: #2a2a32;
+  --color-line: #2c2c35;
+  --color-line-bright: #3d3d48;
+
+  --color-text: #f2f2f5;
+  --color-muted: #aeaeb9;
+  --color-faint: #7c7c88;
+
+  --color-brand: #ff4f6d;
+  --color-brand-hover: #ff6a83;
+  --color-brand-dim: #3a1720;
+
+  --color-ai: #b9a4ff;
+  --color-ai-dim: #241d3d;
+
+  --color-good: #7ed6a2;
+  --color-warn: #f2c66d;
+  --color-bad: #ff8a8a;
+  --color-bad-dim: #3a1818;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  --font-sans: var(--font-inter), var(--font-noto-thai), system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    background: var(--color-ground);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Thai has no spaces between words; this is the line-breaking it expects. */
+  :lang(th) {
+    line-break: loose;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-brand) 45%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-text placeholder:text-faint;
+    @apply focus:border-line-bright focus:outline-none;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-brand text-white hover:bg-brand-hover;
+  }
+  .btn-light {
+    @apply bg-text text-ground hover:bg-white;
+  }
+  .btn-ghost {
+    @apply bg-raised text-text hover:bg-hover;
+  }
+  .btn-quiet {
+    @apply text-muted hover:bg-raised hover:text-text;
+  }
+  .btn-danger {
+    @apply bg-bad-dim text-bad hover:bg-bad hover:text-ground;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-text;
+  }
+  .hint {
+    @apply mt-1 text-xs text-faint;
+  }
+}
+
+/* Horizontal chip rails scroll without a bar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

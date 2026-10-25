@@ -1,0 +1,7 @@
+# Not a monorepo — this file exists only to carry pnpm's build-script
+# approvals, which pnpm 10 reads from here rather than from package.json.
+onlyBuiltDependencies:
+  - esbuild
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver

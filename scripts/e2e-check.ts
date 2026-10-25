@@ -129,10 +129,26 @@ async function main() {
     check(await v.isVisible(`text=${comment}`), "the comment survives a reload");
     check(await v.isVisible('button[aria-label="Like"][aria-pressed="true"]'), "the like survives a reload");
 
-    const viewed = await v.evaluate(async (id) => (await fetch(`/api/videos/${id}/view`, { method: "POST" })).json(), videoId);
-    check(viewed.counted === true, "a view counts once");
-    const again = await v.evaluate(async (id) => (await fetch(`/api/videos/${id}/view`, { method: "POST" })).json(), videoId);
-    check(again.counted === false, "…and the same viewer the same day does not count twice");
+    const forged = await v.evaluate(
+      async (id) =>
+        (await fetch(`/api/videos/${id}/view`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticket: "1.forged" }) })).json(),
+      videoId,
+    );
+    check(forged.counted === false, "a view request without the page's ticket is not counted");
+    const playAndCount = async () => {
+      const response = v.waitForResponse((r) => r.url().endsWith(`/api/videos/${videoId}/view`) && r.request().method() === "POST", { timeout: 20_000 });
+      await v.goto(`${BASE}/watch/${videoId}`);
+      await v.evaluate(() => {
+        const video = document.querySelector("video")!;
+        video.muted = true;
+        return video.play();
+      });
+      return (await (await response).json()).counted as boolean;
+    };
+    check((await playAndCount()) === true, "real playback counts a view");
+    check((await playAndCount()) === false, "…once: the same viewer the same day does not count twice");
+    const redirect = await viewer.request.get(`${BASE}/login?next=${encodeURIComponent("/\t/evil.example")}`, { maxRedirects: 0 });
+    check(redirect.headers()["location"] === "/", "sign-in will not redirect to another site");
 
     await v.goto(`${BASE}/feed/subscriptions`);
     check(await v.isVisible(`text=${title}`), "the subscriptions feed has the creator's video");
@@ -211,6 +227,34 @@ async function main() {
     const watch = await fetch(`${BASE}/watch/${videoId}`);
     check(!embed.headers.get("x-frame-options") && watch.headers.get("x-frame-options") === "DENY", "only the embed player may be framed");
 
+    console.log("series");
+    const patched = await fetch(`${BASE}/api/v1/videos/${apiVideo.id}`, {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility: "public" }),
+    });
+    check(patched.status === 200 && (await patched.json()).visibility === "public", "PATCH changes one field and keeps the rest");
+    const listedSeries = (await (await fetch(`${BASE}/api/v1/series`, { headers: auth })).json()).series as Array<{ id: string; episodeCount: number }>;
+    check(listedSeries.find((item) => item.id === series.id)?.episodeCount === 1, "the series counts its public episode");
+    await a.goto(`${BASE}/@e2ec${run}?tab=series`);
+    check(await a.isVisible(`text=Ferry Tales ${run}`), "the channel's Series tab lists it");
+    await a.goto(`${BASE}/series/${series.id}`);
+    check(await a.isVisible(`text=API episode ${run}`), "the series page lists the episode");
+    const secretUpload = await (
+      await fetch(`${BASE}/api/v1/uploads`, { method: "POST", headers: { ...auth, "Content-Type": "video/mp4" }, body: new Uint8Array(await readFile(clip)) })
+    ).json();
+    const secret = await (
+      await fetch(`${BASE}/api/v1/videos`, {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId: secretUpload.uploadId, title: `Secret episode ${run}`, visibility: "unlisted", seriesId: series.id }),
+      })
+    ).json();
+    await a.goto(`${BASE}/watch/${apiVideo.id}`);
+    check(!(await a.isVisible(`text=Secret episode ${run}`)), "an unlisted episode is not listed beside its public sibling");
+    await a.goto(`${BASE}/watch/${secret.id}`);
+    check(await a.isVisible(`h1:has-text("Secret episode ${run}")`), "…but plays for anyone with its link");
+
     console.log("language");
     await anon.addCookies([{ name: "dt_lang", value: "th", url: BASE }]);
     await a.goto(`${BASE}/`);
@@ -222,6 +266,13 @@ async function main() {
     if (!admin) {
       console.log(`  – skipped: no operator account ${ADMIN.email} (seed the database to include it)`);
     } else {
+      await fetch(`${BASE}/api/v1/videos/${apiVideo.id}`, {
+        method: "PATCH",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ visibility: "private" }),
+      });
+      await admin.goto(`${BASE}/watch/${apiVideo.id}`);
+      check(await admin.isVisible("text=This video isn't available."), "a private video is its owner's alone, moderators included");
       await admin.goto(`${BASE}/admin`);
       const row = admin.locator("div.rounded-xl", { hasText: title }).first();
       if (await row.count()) {
@@ -238,7 +289,7 @@ async function main() {
     }
 
     console.log("cleanup");
-    for (const id of [videoId, apiVideo.id]) {
+    for (const id of [videoId, apiVideo.id, secret.id]) {
       const gone = await fetch(`${BASE}/api/v1/videos/${id}`, { method: "DELETE", headers: auth });
       check(gone.status === 204, `DELETE /api/v1/videos/${id}`);
     }

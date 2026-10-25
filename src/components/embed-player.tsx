@@ -1,8 +1,21 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { postView } from "./watch/player";
 
-export function EmbedPlayer({ videoId, src, poster, startAt }: { videoId: string; src: string; poster: string | null; startAt: number }) {
+export function EmbedPlayer({
+  videoId,
+  src,
+  poster,
+  startAt,
+  viewTicket,
+}: {
+  videoId: string;
+  src: string;
+  poster: string | null;
+  startAt: number;
+  viewTicket: string;
+}) {
   const ref = useRef<HTMLVideoElement>(null);
   const counted = useRef(false);
 
@@ -27,7 +40,7 @@ export function EmbedPlayer({ videoId, src, poster, startAt }: { videoId: string
         const video = event.currentTarget;
         if (!counted.current && video.currentTime >= Math.min(10, Math.max(2, (video.duration || 0) * 0.3))) {
           counted.current = true;
-          void fetch(`/api/videos/${videoId}/view`, { method: "POST" }).catch(() => {});
+          void postView(videoId, viewTicket);
         }
       }}
     />

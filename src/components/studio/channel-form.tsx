@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { updateChannelAction, type FormState } from "@/app/actions/studio";
 import { LIMITS } from "@/lib/catalog";
 import { Avatar } from "../avatar";
 import { useT } from "../i18n";
+import { keepFields } from "./keep-fields";
 
 export function ChannelForm({
   name,
@@ -26,6 +27,9 @@ export function ChannelForm({
   const [banner, setBanner] = useState(bannerUrl);
   const [removeAvatar, setRemoveAvatar] = useState(false);
   const [removeBanner, setRemoveBanner] = useState(false);
+  // "Remove" has to forget a file chosen a moment ago, or it would be uploaded anyway.
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const bannerInput = useRef<HTMLInputElement>(null);
 
   const error = state?.error
     ? state.error === "handle_taken" || state.error === "handle_invalid"
@@ -36,7 +40,7 @@ export function ChannelForm({
     : null;
 
   return (
-    <form action={action} className="max-w-2xl space-y-8">
+    <form onSubmit={keepFields(action)} className="max-w-2xl space-y-8">
       <input type="hidden" name="removeAvatar" value={removeAvatar ? "1" : "0"} />
       <input type="hidden" name="removeBanner" value={removeBanner ? "1" : "0"} />
 
@@ -48,6 +52,7 @@ export function ChannelForm({
           <label className="btn btn-ghost h-8 cursor-pointer text-xs">
             {t("upload.customThumbnail")}
             <input
+              ref={bannerInput}
               type="file"
               name="banner"
               accept="image/jpeg,image/png,image/webp"
@@ -62,7 +67,11 @@ export function ChannelForm({
             />
           </label>
           {banner && (
-            <button type="button" className="btn btn-quiet h-8 text-xs" onClick={() => (setBanner(null), setRemoveBanner(true))}>
+            <button type="button" className="btn btn-quiet h-8 text-xs" onClick={() => {
+                if (bannerInput.current) bannerInput.current.value = "";
+                setBanner(null);
+                setRemoveBanner(true);
+              }}>
               {t("studio.removeImage")}
             </button>
           )}
@@ -78,6 +87,7 @@ export function ChannelForm({
             <label className="btn btn-ghost h-8 cursor-pointer text-xs">
               {t("upload.customThumbnail")}
               <input
+                ref={avatarInput}
                 type="file"
                 name="avatar"
                 accept="image/jpeg,image/png,image/webp"
@@ -92,7 +102,11 @@ export function ChannelForm({
               />
             </label>
             {avatar && (
-              <button type="button" className="btn btn-quiet h-8 text-xs" onClick={() => (setAvatar(null), setRemoveAvatar(true))}>
+              <button type="button" className="btn btn-quiet h-8 text-xs" onClick={() => {
+                  if (avatarInput.current) avatarInput.current.value = "";
+                  setAvatar(null);
+                  setRemoveAvatar(true);
+                }}>
                 {t("studio.removeImage")}
               </button>
             )}

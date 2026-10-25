@@ -6,6 +6,7 @@ import { updateVideoAction, type FormState } from "@/app/actions/studio";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "../i18n";
 import { DetailsFields, type DetailsValues } from "./details-fields";
+import { keepFields } from "./keep-fields";
 
 export function EditVideoForm({
   videoId,
@@ -23,7 +24,7 @@ export function EditVideoForm({
   const [preview, setPreview] = useState<string | null>(null);
 
   return (
-    <form action={action} className="space-y-6">
+    <form onSubmit={keepFields(action)} className="space-y-6">
       <input type="hidden" name="videoId" value={videoId} />
       <DetailsFields initial={initial} seriesOptions={seriesOptions} />
       <div>

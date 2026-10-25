@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { comments, reactions, reports, subscriptions, users, videos, views, watchHistory } from "@/db/schema";
 import { LIMITS, type ReportReason } from "./catalog";
 import { newId } from "./ids";
+import { IP_DAILY_CAP } from "./views";
 import { mediaUrl } from "./storage";
 
 /**
@@ -166,10 +167,17 @@ export async function addComment(userId: string, videoId: string, body: string, 
       if (!parent || parent.videoId !== videoId) throw new CommentError("bad_parent");
       if (parent.parentId) parentId = parent.parentId;
     }
-    const [row] = await tx
-      .insert(comments)
-      .values({ id: newId("cmt"), videoId, userId, parentId: parentId ?? null, body: text })
-      .returning();
+    let row;
+    try {
+      [row] = await tx
+        .insert(comments)
+        .values({ id: newId("cmt"), videoId, userId, parentId: parentId ?? null, body: text })
+        .returning();
+    } catch (error) {
+      // The comment being replied to was deleted a moment ago.
+      if ((error as { code?: string }).code === "23503") throw new CommentError("bad_parent");
+      throw error;
+    }
     await tx
       .update(videos)
       .set({ commentCount: sql`${videos.commentCount} + 1` })
@@ -189,15 +197,20 @@ export async function deleteComment(actorId: string, commentId: string, actorIsA
       .limit(1);
     if (!row) return false;
     if (row.userId !== actorId && row.ownerId !== actorId && !actorIsAdmin) throw new Error("FORBIDDEN");
-    const [{ n }] = await tx
-      .select({ n: sql<number>`count(*)::int` })
-      .from(comments)
-      .where(eq(comments.parentId, commentId));
-    await tx.delete(comments).where(eq(comments.id, commentId));
-    await tx
-      .update(videos)
-      .set({ commentCount: sql`greatest(0, ${videos.commentCount} - ${1 + n})` })
-      .where(eq(videos.id, row.videoId));
+    // Lock the comment, so no reply can be added to it (a reply's foreign
+    // key needs a share lock on its parent) while its replies go, then count
+    // what was actually deleted rather than what was there a moment earlier.
+    const [locked] = await tx.select({ id: comments.id }).from(comments).where(eq(comments.id, commentId)).for("update");
+    if (!locked) return false;
+    const replies = await tx.delete(comments).where(eq(comments.parentId, commentId)).returning({ id: comments.id });
+    const removed = await tx.delete(comments).where(eq(comments.id, commentId)).returning({ id: comments.id });
+    const total = replies.length + removed.length;
+    if (total > 0) {
+      await tx
+        .update(videos)
+        .set({ commentCount: sql`greatest(0, ${videos.commentCount} - ${total})` })
+        .where(eq(videos.id, row.videoId));
+    }
     return true;
   });
 }
@@ -208,14 +221,29 @@ export function viewDay(now = new Date()): string {
 }
 
 /**
- * Count a view, once per viewer per video per day. Returns whether this one
- * counted. Signed-in viewers also get a history entry, counted or not.
+ * Count a view, once per viewer per video per day, and for anonymous viewers
+ * at most `IP_DAILY_CAP` times per network per video per day. Returns whether
+ * this one counted. Signed-in viewers also get a history entry either way.
  */
-export async function recordView(videoId: string, viewerKey: string, userId: string | null): Promise<boolean> {
+export async function recordView(
+  videoId: string,
+  viewer: { key: string; userId: string | null; networkKey: string | null },
+): Promise<boolean> {
+  const day = viewDay();
   const counted = await db.transaction(async (tx) => {
+    if (viewer.networkKey) {
+      // Serialise the check-then-insert per video and network, so two
+      // requests racing past the cap cannot both land.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${videoId}:${viewer.networkKey}`}))`);
+      const [{ n }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(views)
+        .where(and(eq(views.videoId, videoId), eq(views.day, day), eq(views.networkKey, viewer.networkKey)));
+      if (n >= IP_DAILY_CAP) return false;
+    }
     const inserted = await tx
       .insert(views)
-      .values({ videoId, viewerKey, day: viewDay() })
+      .values({ videoId, viewerKey: viewer.key, day, networkKey: viewer.networkKey })
       .onConflictDoNothing()
       .returning({ videoId: views.videoId });
     if (inserted.length) {
@@ -226,7 +254,7 @@ export async function recordView(videoId: string, viewerKey: string, userId: str
     }
     return inserted.length > 0;
   });
-  if (userId) await saveProgress(userId, videoId, null);
+  if (viewer.userId) await saveProgress(viewer.userId, videoId, null);
   return counted;
 }
 

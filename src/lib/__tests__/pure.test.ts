@@ -150,6 +150,10 @@ describe("safety helpers", () => {
     expect(safeNext("//evil.example")).toBe("/");
     expect(safeNext("https://evil.example")).toBe("/");
     expect(safeNext("/\\evil.example")).toBe("/");
+    expect(safeNext("/\t/evil.example")).toBe("/");
+    expect(safeNext("/%09/evil.example")).toBe("/%09/evil.example");
+    expect(safeNext("/\n/evil.example")).toBe("/");
+    expect(safeNext("/search?q=a#top")).toBe("/search?q=a#top");
     expect(safeNext(undefined, "/studio")).toBe("/studio");
   });
   it("rejects a cross-site POST", () => {

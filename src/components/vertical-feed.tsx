@@ -6,6 +6,7 @@ import { ExternalLink, MessageSquare, Volume2, VolumeX } from "lucide-react";
 import { Avatar } from "./avatar";
 import { useT } from "./i18n";
 import { Reactions } from "./watch/actions";
+import { postView } from "./watch/player";
 import type { ChannelRef } from "@/lib/videos";
 
 export interface VerticalItem {
@@ -19,6 +20,8 @@ export interface VerticalItem {
   comments: string;
   models: string[];
   reaction: -1 | 0 | 1;
+  ticket: string;
+  durationSec: number;
 }
 
 /**
@@ -84,10 +87,10 @@ export function VerticalFeed({ items, signedIn }: { items: VerticalItem[]; signe
 
   const onTime = (item: VerticalItem, video: HTMLVideoElement) => {
     if (counted.current.has(item.id)) return;
-    const threshold = Math.min(10, Math.max(2, (video.duration || 0) * 0.3));
+    const threshold = Math.min(10, Math.max(2, (video.duration || item.durationSec || 0) * 0.3));
     if (video.currentTime >= threshold) {
       counted.current.add(item.id);
-      void fetch(`/api/videos/${item.id}/view`, { method: "POST" }).catch(() => {});
+      void postView(item.id, item.ticket);
     }
   };
 

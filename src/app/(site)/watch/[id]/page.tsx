@@ -14,6 +14,7 @@ import { listComments, isSubscribed, reactionOf, resumePosition, type CommentVie
 import { pageContext } from "@/lib/viewer";
 import { getWatchable, seriesEpisodes, upNext } from "@/lib/videos";
 import { currentUser } from "@/lib/auth";
+import { issueViewTicket } from "@/lib/views";
 
 export async function generateMetadata({ params }: PageProps<"/watch/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -61,7 +62,7 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
     user ? reactionOf(user.id, video.id) : Promise.resolve(0 as const),
     user && !own ? isSubscribed(user.id, video.channelId) : Promise.resolve(false),
     user ? resumePosition(user.id, video.id) : Promise.resolve(0),
-    video.seriesId ? seriesEpisodes(video.seriesId) : Promise.resolve([]),
+    video.seriesId ? seriesEpisodes(video.seriesId, own) : Promise.resolve([]),
   ]);
 
   const requestedStart = Number(query.t);
@@ -93,6 +94,7 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
           signedIn={Boolean(user)}
           next={nextUp ? { id: nextUp.id, title: nextUp.title } : null}
           countable={video.status === "ready" && !own}
+          viewTicket={issueViewTicket(video.id)}
         />
 
         <div className="px-4 sm:px-0">

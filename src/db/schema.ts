@@ -176,8 +176,13 @@ export const views = pgTable(
       .references(() => videos.id, { onDelete: "cascade" }),
     viewerKey: text("viewer_key").notNull(),
     day: date("day").notNull(),
+    /** A keyed hash of the network an anonymous view came from, for the daily cap. */
+    networkKey: text("network_key"),
   },
-  (t) => [primaryKey({ columns: [t.videoId, t.viewerKey, t.day] })],
+  (t) => [
+    primaryKey({ columns: [t.videoId, t.viewerKey, t.day] }),
+    index("views_network_idx").on(t.videoId, t.day, t.networkKey),
+  ],
 );
 
 /** Signed-in viewing history, with where they stopped so they can resume. */

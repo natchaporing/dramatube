@@ -293,11 +293,18 @@ export interface WatchVideo extends Video {
   seriesTitle: string | null;
 }
 
-export type Viewer = Pick<User, "id" | "email" | "role"> | null;
+export type Viewer = Pick<User, "id" | "role"> | null;
 
+/**
+ * The owner sees everything of theirs. A moderator additionally sees a
+ * removed video that was not private — what they took down, so they can
+ * restore it — but a private video stays its owner's alone.
+ */
 export function canWatch(video: Pick<Video, "channelId" | "visibility" | "status">, viewer: Viewer): boolean {
-  if (viewer && (viewer.id === video.channelId || isAdmin(viewer))) return true;
-  return video.status === "ready" && video.visibility !== "private";
+  if (viewer?.id === video.channelId) return true;
+  if (video.visibility === "private") return false;
+  if (video.status === "ready") return true;
+  return Boolean(viewer && isAdmin(viewer));
 }
 
 /** A video with its channel, or null if it does not exist or may not be seen. */
@@ -319,9 +326,14 @@ export async function getWatchable(id: string, viewer: Viewer): Promise<WatchVid
   };
 }
 
+/**
+ * A series' episodes in order. Strangers get the public ones only — an
+ * unlisted episode is for people who were sent its link, and listing it
+ * beside its siblings would hand that link to everyone. The owner gets all.
+ */
 export async function seriesEpisodes(seriesId: string, includeHidden = false): Promise<VideoCard[]> {
   const rows = await cards()
-    .where(includeHidden ? eq(videos.seriesId, seriesId) : and(eq(videos.seriesId, seriesId), eq(videos.status, "ready"), ne(videos.visibility, "private")))
+    .where(includeHidden ? eq(videos.seriesId, seriesId) : and(eq(videos.seriesId, seriesId), listed))
     .orderBy(sql`${videos.episodeNumber} asc nulls last`, videos.publishedAt);
   return rows.map(toCard);
 }
@@ -339,7 +351,7 @@ export async function upNext(video: Pick<Video, "id" | "channelId" | "category" 
 
   let nextEpisode: VideoCard | null = null;
   if (video.seriesId) {
-    const episodes = (await seriesEpisodes(video.seriesId)).filter((card) => card.visibility === "public");
+    const episodes = await seriesEpisodes(video.seriesId);
     const index = episodes.findIndex((card) => card.id === video.id);
     nextEpisode = index >= 0 ? episodes[index + 1] ?? null : episodes[0] ?? null;
     if (nextEpisode) add([nextEpisode]);
@@ -369,7 +381,8 @@ export async function subscribedChannels(userId: string, limit = 50): Promise<Ch
   return rows.map(channelRef);
 }
 
-export async function channelStats(channelId: string) {
+/** Totals for a channel. `publicOnly` for anything a stranger sees. */
+export async function channelStats(channelId: string, publicOnly = false) {
   const [row] = await db
     .select({
       videos: sql<number>`count(*)::int`,
@@ -378,7 +391,7 @@ export async function channelStats(channelId: string) {
       comments: sql<number>`coalesce(sum(${videos.commentCount}), 0)::int`,
     })
     .from(videos)
-    .where(eq(videos.channelId, channelId));
+    .where(publicOnly ? and(eq(videos.channelId, channelId), listed) : eq(videos.channelId, channelId));
   return row;
 }
 
@@ -409,9 +422,12 @@ export async function listSeries(channelId: string, includeEmpty = false): Promi
       title: series.title,
       description: series.description,
       updatedAt: series.updatedAt,
-      episodeCount: sql<number>`(select count(*)::int from ${videos} v where v.series_id = ${series.id} and v.visibility = 'public' and v.status = 'ready')`,
-      first: sql<string | null>`(select v.id || ' ' || coalesce(v.thumbnail_key, '') from ${videos} v
-        where v.series_id = ${series.id} and v.visibility = 'public' and v.status = 'ready'
+      // Spelled out as "series"."id": in a one-table select Drizzle writes a
+      // column unqualified, and a bare "id" inside these subqueries would mean
+      // the video's id, matching nothing.
+      episodeCount: sql<number>`(select count(*)::int from videos v where v.series_id = "series"."id" and v.visibility = 'public' and v.status = 'ready')`,
+      first: sql<string | null>`(select v.id || ' ' || coalesce(v.thumbnail_key, '') from videos v
+        where v.series_id = "series"."id" and v.visibility = 'public' and v.status = 'ready'
         order by v.episode_number asc nulls last, v.published_at asc limit 1)`,
     })
     .from(series)

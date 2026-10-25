@@ -45,7 +45,7 @@ export default async function ChannelPage({ params, searchParams }: PageProps<"/
   const [videoCount, subscribed, stats, videos, seriesList] = await Promise.all([
     listPublicCount(channel.id),
     user && !own ? isSubscribed(user.id, channel.id) : Promise.resolve(false),
-    tab === "about" ? channelStats(channel.id) : Promise.resolve(null),
+    tab === "about" ? channelStats(channel.id, true) : Promise.resolve(null),
     tab === "videos" ? listChannelVideos(channel.id, { includeHidden: false, sort }) : Promise.resolve([]),
     tab === "series" ? listSeries(channel.id) : Promise.resolve([]),
   ]);
@@ -69,8 +69,13 @@ export default async function ChannelPage({ params, searchParams }: PageProps<"/
       </div>
 
       <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Avatar name={channel.name} handle={channel.handle} url={mediaUrl(channel.avatarKey)} size={120} className="hidden sm:inline-flex" />
-        <Avatar name={channel.name} handle={channel.handle} url={mediaUrl(channel.avatarKey)} size={72} className="sm:hidden" />
+        {/* Two sizes, each in its own wrapper: the fallback avatar carries its own display class. */}
+        <span className="hidden sm:block">
+          <Avatar name={channel.name} handle={channel.handle} url={mediaUrl(channel.avatarKey)} size={120} />
+        </span>
+        <span className="sm:hidden">
+          <Avatar name={channel.name} handle={channel.handle} url={mediaUrl(channel.avatarKey)} size={72} />
+        </span>
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-text sm:text-4xl">{channel.name}</h1>
           <div className="mt-1 flex flex-wrap gap-x-1.5 text-sm text-muted">

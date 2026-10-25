@@ -26,6 +26,7 @@ const STATUS: Record<PublishError["code"], number> = {
   series_missing: 404,
   invalid: 422,
   not_found: 404,
+  too_many_uploads: 429,
 };
 
 export function publishErrorResponse(error: unknown) {

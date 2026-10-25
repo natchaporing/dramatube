@@ -1,6 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { copyFile, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { dirname, join, resolve, sep } from "node:path";
@@ -98,6 +98,8 @@ export async function deleteObject(key: string | null | undefined): Promise<void
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  // Each video has a directory of its own; leave none empty behind it.
+  await rmdir(dirname(localPath(key))).catch(() => {});
 }
 
 export async function localSize(key: string): Promise<number | null> {
@@ -198,9 +200,18 @@ async function s3PutStream(key: string, sourcePath: string, mimeType: string): P
     ["content-type", mimeType],
   ]);
   const send = target.protocol === "http:" ? httpRequest : httpsRequest;
+  // `host` here would be read as a bare hostname, so an endpoint with a port
+  // (MinIO on :9000) fails DNS. The URL splits them; the Host header keeps both.
+  const endpoint = new URL(`${target.protocol}//${target.host}`);
   await new Promise<void>((resolvePut, reject) => {
     const req = send(
-      { method: "PUT", host: target.host, path: target.path, headers },
+      {
+        method: "PUT",
+        hostname: endpoint.hostname,
+        port: endpoint.port || undefined,
+        path: target.path,
+        headers: { ...headers, host: target.host },
+      },
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (chunk: Buffer) => chunks.push(chunk));

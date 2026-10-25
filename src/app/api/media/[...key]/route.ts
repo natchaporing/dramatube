@@ -24,6 +24,7 @@ async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">
   const key = parts.join("/");
   if (!isSafeKey(key)) return new Response("Not found", { status: 404 });
 
+  // Avatars and banners get a new key when they change, so they cache forever.
   let cacheControl = "public, max-age=31536000, immutable";
   const [kind, videoId] = parts;
   if (kind === "videos" || kind === "thumbs") {
@@ -35,9 +36,10 @@ async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">
     if (!video) return new Response("Not found", { status: 404 });
     const open = video.status === "ready" && video.visibility !== "private";
     if (!open && !canWatch(video, await currentUser())) return new Response("Not found", { status: 404 });
-    // Public files can sit in a shared cache; anything else must not, or a
-    // video made private yesterday would still be served from a CDN today.
-    if (!(open && video.visibility === "public")) cacheControl = "private, no-store";
+    // A video's key stays the same when it goes private or is taken down, so
+    // a long cache would keep serving it from a CDN or a browser afterwards.
+    // Five minutes bounds that; anything not public is never cached at all.
+    cacheControl = open && video.visibility === "public" ? "public, max-age=300" : "private, no-store";
   } else if (kind !== "avatars" && kind !== "banners") {
     return new Response("Not found", { status: 404 });
   }
@@ -53,7 +55,9 @@ async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">
   let size: number;
   try {
     path = localPath(key);
-    size = (await stat(path)).size;
+    const info = await stat(path);
+    if (!info.isFile()) return new Response("Not found", { status: 404 });
+    size = info.size;
   } catch {
     return new Response("Not found", { status: 404 });
   }

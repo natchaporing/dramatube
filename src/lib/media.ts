@@ -199,7 +199,8 @@ export async function extractThumbnail(path: string, atSec: number): Promise<Buf
  */
 export async function faststart(path: string, type: AcceptedVideoType): Promise<AcceptedVideoType> {
   if (type === "video/webm") return type;
-  const out = `${path}.faststart.mp4`;
+  // A name of its own, so nothing else that touches this upload can collide with it.
+  const out = `${path}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.faststart.mp4`;
   const result = await run(
     env.ffmpegPath,
     ["-v", "error", "-y", "-i", path, "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart", "-f", "mp4", out],

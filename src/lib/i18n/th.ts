@@ -244,6 +244,7 @@ export const th: Record<MessageKey, string> = {
   "upload.error.invalid": "มีบางช่องที่ต้องแก้ไข: {detail}",
   "upload.error.not_found": "ไม่พบวิดีโอนี้",
   "upload.error.network": "การเชื่อมต่อขาดหาย",
+  "upload.error.too_many_uploads": "คุณมีไฟล์ที่อัปโหลดแล้วแต่ยังไม่เผยแพร่ครบ 3 ไฟล์ กรุณาเผยแพร่ก่อน หรือรอสักครู่ให้ไฟล์ที่ไม่ได้เผยแพร่หมดอายุ",
   "upload.duration": "ความยาว {duration}",
   "upload.size": "{width}×{height}",
 

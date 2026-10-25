@@ -15,6 +15,15 @@ export function seekPlayer(seconds: number) {
 
 export const AUTOPLAY_KEY = "dt_autoplay";
 
+/** Ask the server to count a view; it decides (see lib/views.ts). */
+export function postView(videoId: string, ticket: string) {
+  return fetch(`/api/videos/${videoId}/view`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticket }),
+  }).catch(() => {});
+}
+
 export function readAutoplay(): boolean {
   try {
     return window.localStorage.getItem(AUTOPLAY_KEY) !== "0";
@@ -66,6 +75,7 @@ export function Player({
   signedIn,
   next,
   countable,
+  viewTicket,
 }: {
   videoId: string;
   src: string;
@@ -77,6 +87,7 @@ export function Player({
   signedIn: boolean;
   next: { id: string; title: string } | null;
   countable: boolean;
+  viewTicket: string;
 }) {
   const t = useT();
   const router = useRouter();
@@ -157,7 +168,7 @@ export function Player({
     const threshold = Math.min(10, Math.max(2, duration * 0.3));
     if (countable && !counted.current && played.current >= threshold) {
       counted.current = true;
-      void fetch(`/api/videos/${videoId}/view`, { method: "POST" }).catch(() => {});
+      void postView(videoId, viewTicket);
     }
     if (signedIn && Math.abs(now - lastSaved.current) >= 15) {
       lastSaved.current = now;

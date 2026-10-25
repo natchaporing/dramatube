@@ -3,6 +3,7 @@ import { LogoMark } from "@/components/logo";
 import { EmbedPlayer } from "@/components/embed-player";
 import { getT } from "@/lib/i18n/server";
 import { getWatchable } from "@/lib/videos";
+import { issueViewTicket } from "@/lib/views";
 
 export const metadata = { robots: { index: false } };
 
@@ -28,7 +29,13 @@ export default async function EmbedPage({ params, searchParams }: PageProps<"/em
 
   return (
     <div className="group relative h-screen w-screen overflow-hidden bg-black">
-      <EmbedPlayer videoId={video.id} src={video.videoUrl} poster={video.thumbnailUrl} startAt={Number.isFinite(start) && start > 0 ? start : 0} />
+      <EmbedPlayer
+        videoId={video.id}
+        src={video.videoUrl}
+        poster={video.thumbnailUrl}
+        startAt={Number.isFinite(start) && start > 0 ? start : 0}
+        viewTicket={issueViewTicket(video.id)}
+      />
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 bg-gradient-to-b from-black/80 to-transparent p-3 opacity-100 transition-opacity group-hover:opacity-100">
         <Link href={`/watch/${video.id}`} target="_blank" className="pointer-events-auto flex min-w-0 items-center gap-2 text-sm font-medium text-white">
           <LogoMark className="h-6 w-6 shrink-0" />

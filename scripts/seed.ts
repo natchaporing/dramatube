@@ -14,7 +14,7 @@
  *
  * Sign in as director@example.com / dramatube.
  */
-import "dotenv/config";
+import "./load-env";
 import { spawnSync } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -28,7 +28,8 @@ import { newId, newObjectName } from "../src/lib/ids";
 import { publishVideo, receiveUpload } from "../src/lib/publish";
 import { createSeries } from "../src/lib/studio";
 import { registerUser } from "../src/lib/session";
-import { putBuffer } from "../src/lib/storage";
+import { env } from "../src/lib/env";
+import { localRoot, putBuffer } from "../src/lib/storage";
 
 const FONT = ["/usr/share/fonts/opentype/inter/Inter-Bold.otf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/Library/Fonts/Arial Bold.ttf"].find(
   (path) => existsSync(path),
@@ -219,6 +220,12 @@ async function main() {
     await db.execute(
       sql`truncate table reports, api_tokens, watch_history, views, comments, reactions, subscriptions, uploads, videos, series, users cascade`,
     );
+    // The rows named the files; with the rows gone, local files are orphans.
+    if (env.storageDriver === "local") {
+      for (const dir of ["videos", "thumbs", "avatars", "banners"]) {
+        await rm(join(localRoot(), dir), { recursive: true, force: true });
+      }
+    }
     console.log("emptied every table");
   }
 

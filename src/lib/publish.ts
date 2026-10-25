@@ -1,9 +1,9 @@
 import { createWriteStream } from "node:fs";
-import { mkdir, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { and, eq, lt, max, ne } from "drizzle-orm";
+import { and, count, eq, lt, max, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { series, uploads, videos, type Video } from "@/db/schema";
@@ -50,15 +50,27 @@ export class PublishError extends Error {
       | "bad_thumbnail"
       | "series_missing"
       | "invalid"
-      | "not_found",
+      | "not_found"
+      | "too_many_uploads",
     public readonly detail?: string,
   ) {
     super(detail ? `${code}: ${detail}` : code);
   }
 }
 
-const STALE_UPLOAD_MS = 24 * 60 * 60 * 1000;
+/** Unpublished uploads are deleted after this long. */
+const STALE_UPLOAD_MS = 6 * 60 * 60 * 1000;
+/**
+ * At most this many files may wait unpublished per account, counting ones
+ * still streaming in. Without a cap, one free account can fill the disk with
+ * two-gigabyte files it never intends to publish.
+ */
+export const MAX_PENDING_UPLOADS = 3;
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/* Streams in progress, per account. Per process: run more than one web
+   server and each enforces its own share, which still bounds the total. */
+const streaming = new Map<string, number>();
 
 /** Stream a request body to disk, refusing it the moment it passes the limit. */
 export async function receiveUpload(opts: {
@@ -72,6 +84,20 @@ export async function receiveUpload(opts: {
 
   void purgeStaleUploads().catch(() => {});
 
+  const [{ waiting }] = await db.select({ waiting: count() }).from(uploads).where(eq(uploads.userId, opts.userId));
+  const inProgress = streaming.get(opts.userId) ?? 0;
+  if (waiting + inProgress >= MAX_PENDING_UPLOADS) throw new PublishError("too_many_uploads");
+  streaming.set(opts.userId, inProgress + 1);
+  try {
+    return await streamToDisk(opts.userId, opts.body, limit);
+  } finally {
+    const left = (streaming.get(opts.userId) ?? 1) - 1;
+    if (left > 0) streaming.set(opts.userId, left);
+    else streaming.delete(opts.userId);
+  }
+}
+
+async function streamToDisk(userId: string, body: ReadableStream<Uint8Array>, limit: number) {
   const dir = uploadDir();
   await mkdir(dir, { recursive: true });
   const uploadId = newId("upl");
@@ -87,11 +113,11 @@ export async function receiveUpload(opts: {
   });
 
   try {
-    await pipeline(Readable.fromWeb(opts.body as import("node:stream/web").ReadableStream), meter, createWriteStream(path));
+    await pipeline(Readable.fromWeb(body as import("node:stream/web").ReadableStream), meter, createWriteStream(path));
     if (received === 0) throw new PublishError("empty");
     const mimeType = sniffVideo(await readHead(path));
     if (!mimeType) throw new PublishError("not_a_video");
-    await db.insert(uploads).values({ id: uploadId, userId: opts.userId, path, mimeType, byteSize: received });
+    await db.insert(uploads).values({ id: uploadId, userId, path, mimeType, byteSize: received });
     return { uploadId, byteSize: received, mimeType };
   } catch (error) {
     await unlink(path).catch(() => {});
@@ -99,14 +125,48 @@ export async function receiveUpload(opts: {
   }
 }
 
-/** Uploads nobody published within a day are deleted, file and row. */
-export async function purgeStaleUploads(): Promise<number> {
+let lastPurge = 0;
+
+/**
+ * Delete what nobody published: rows older than `STALE_UPLOAD_MS` with their
+ * files, and any file in the upload directory that has not been written to
+ * for that long and has no row — a stream cut off by a crash or a restart
+ * before its row was written, or a faststart copy a crash left behind.
+ * Runs at most every ten minutes per process, whoever triggers it.
+ */
+export async function purgeStaleUploads(force = false): Promise<number> {
+  if (!force && Date.now() - lastPurge < 10 * 60 * 1000) return 0;
+  lastPurge = Date.now();
+  const cutoff = Date.now() - STALE_UPLOAD_MS;
   const stale = await db
     .delete(uploads)
-    .where(lt(uploads.createdAt, new Date(Date.now() - STALE_UPLOAD_MS)))
+    .where(lt(uploads.createdAt, new Date(cutoff)))
     .returning({ path: uploads.path });
   await Promise.all(stale.map((row) => unlink(row.path).catch(() => {})));
-  return stale.length;
+
+  let orphans = 0;
+  const dir = uploadDir();
+  let names: string[] = [];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return stale.length;
+  }
+  const live = new Set((await db.select({ id: uploads.id }).from(uploads)).map((row) => row.id));
+  for (const name of names) {
+    if (live.has(name.split(".")[0])) continue;
+    const path = join(dir, name);
+    try {
+      const info = await stat(path);
+      if (info.isFile() && info.mtimeMs < cutoff) {
+        await unlink(path);
+        orphans++;
+      }
+    } catch {
+      /* gone already */
+    }
+  }
+  return stale.length + orphans;
 }
 
 const optionalText = (limit: number) =>
@@ -194,93 +254,98 @@ export async function publishVideo(
   if (!parsed.success) throw new PublishError("invalid", parsed.error.issues.map((issue) => issue.path.join(".") || issue.message).join(", "));
   const input = parsed.data;
 
-  const [upload] = await db
-    .select()
-    .from(uploads)
-    .where(and(eq(uploads.id, input.uploadId), eq(uploads.userId, userId)))
-    .limit(1);
-  if (!upload) throw new PublishError("upload_missing");
-  try {
-    await stat(upload.path);
-  } catch {
-    await db.delete(uploads).where(eq(uploads.id, upload.id));
-    throw new PublishError("upload_missing");
-  }
-
+  // Everything that can be checked without the file, before claiming it.
   const image = checkImage(thumbnail);
   const placement = await resolveSeries(userId, input.seriesId, input.episodeNumber);
 
-  let mimeType = upload.mimeType as AcceptedVideoType;
-  let durationSec = Math.max(0, input.clientDurationSec ?? 0);
-  let width = clampDimension(input.clientWidth);
-  let height = clampDimension(input.clientHeight);
-  const ffmpeg = await hasFfmpeg();
-  if (ffmpeg) {
-    const probe = await probeVideo(upload.path);
-    if (!probe) {
-      await discardUpload(upload.id, upload.path);
-      throw new PublishError("not_a_video");
-    }
-    ({ durationSec, width, height } = probe);
-    mimeType = await faststart(upload.path, mimeType);
-  }
+  /*
+   * Claim the upload by deleting its row. Exactly one request can win that
+   * delete, so two publishes of one upload — a double click, a retrying
+   * client — produce one video, not two, and never work on the same file at
+   * once. If anything below fails while the file is still where it was, the
+   * row is put back so the person can try again without re-uploading.
+   */
+  const [upload] = await db
+    .delete(uploads)
+    .where(and(eq(uploads.id, input.uploadId), eq(uploads.userId, userId)))
+    .returning();
+  if (!upload) throw new PublishError("upload_missing");
 
-  let thumbData = image?.data ?? null;
-  let thumbExt = image?.ext ?? "jpg";
-  let thumbType: string = image?.type ?? "image/jpeg";
-  if (!thumbData && ffmpeg) {
-    thumbData = await extractThumbnail(upload.path, Math.min(5, durationSec * 0.1));
-    thumbExt = "jpg";
-    thumbType = "image/jpeg";
-  }
-
+  let moved = false;
   const id = newVideoId();
-  const videoKey = `videos/${id}/${newObjectName()}.${VIDEO_EXTENSIONS[mimeType]}`;
-  const thumbnailKey = thumbData ? `thumbs/${id}/${newObjectName()}.${thumbExt}` : null;
-  const { size: byteSize } = await stat(upload.path);
-
+  let videoKey: string | null = null;
+  let thumbnailKey: string | null = null;
   try {
+    try {
+      await stat(upload.path);
+    } catch {
+      throw new PublishError("upload_missing");
+    }
+
+    let mimeType = upload.mimeType as AcceptedVideoType;
+    let durationSec = Math.max(0, input.clientDurationSec ?? 0);
+    let width = clampDimension(input.clientWidth);
+    let height = clampDimension(input.clientHeight);
+    const ffmpeg = await hasFfmpeg();
+    if (ffmpeg) {
+      const probe = await probeVideo(upload.path);
+      if (!probe) {
+        await unlink(upload.path).catch(() => {});
+        throw new PublishError("not_a_video");
+      }
+      ({ durationSec, width, height } = probe);
+      mimeType = await faststart(upload.path, mimeType);
+    }
+
+    let thumbData = image?.data ?? null;
+    let thumbExt = image?.ext ?? "jpg";
+    let thumbType: string = image?.type ?? "image/jpeg";
+    if (!thumbData && ffmpeg) {
+      thumbData = await extractThumbnail(upload.path, Math.min(5, durationSec * 0.1));
+      thumbExt = "jpg";
+      thumbType = "image/jpeg";
+    }
+
+    videoKey = `videos/${id}/${newObjectName()}.${VIDEO_EXTENSIONS[mimeType]}`;
+    thumbnailKey = thumbData ? `thumbs/${id}/${newObjectName()}.${thumbExt}` : null;
+    const { size: byteSize } = await stat(upload.path);
+
     if (thumbData && thumbnailKey) await putBuffer(thumbnailKey, thumbData, thumbType);
     await putFile(videoKey, upload.path, mimeType);
-    const [video] = await db.transaction(async (tx) => {
-      await tx.delete(uploads).where(eq(uploads.id, upload.id));
-      return tx
-        .insert(videos)
-        .values({
-          id,
-          channelId: userId,
-          title: input.title,
-          description: input.description,
-          visibility: input.visibility,
-          category: input.category,
-          tags: input.tags,
-          aiUsage: input.aiUsage,
-          aiModels: input.aiModels,
-          prompt: input.prompt,
-          sourceApp: input.sourceApp,
-          seriesId: placement.seriesId,
-          episodeNumber: placement.episodeNumber,
-          videoKey,
-          mimeType,
-          byteSize,
-          thumbnailKey,
-          durationSec,
-          width,
-          height,
-        })
-        .returning();
-    });
+    moved = true;
+    const [video] = await db
+      .insert(videos)
+      .values({
+        id,
+        channelId: userId,
+        title: input.title,
+        description: input.description,
+        visibility: input.visibility,
+        category: input.category,
+        tags: input.tags,
+        aiUsage: input.aiUsage,
+        aiModels: input.aiModels,
+        prompt: input.prompt,
+        sourceApp: input.sourceApp,
+        seriesId: placement.seriesId,
+        episodeNumber: placement.episodeNumber,
+        videoKey,
+        mimeType,
+        byteSize,
+        thumbnailKey,
+        durationSec,
+        width,
+        height,
+      })
+      .returning();
     return video;
   } catch (error) {
     await deleteObject(thumbnailKey).catch(() => {});
-    await deleteObject(videoKey).catch(() => {});
+    if (moved) await deleteObject(videoKey).catch(() => {});
+    const fileStillThere = await stat(upload.path).then(() => true, () => false);
+    if (fileStillThere) await db.insert(uploads).values(upload).onConflictDoNothing();
     throw error;
   }
-}
-
-async function discardUpload(id: string, path: string) {
-  await db.delete(uploads).where(eq(uploads.id, id));
-  await unlink(path).catch(() => {});
 }
 
 async function ownedVideo(userId: string, videoId: string, asAdmin = false) {

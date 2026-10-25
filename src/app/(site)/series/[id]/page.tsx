@@ -33,8 +33,7 @@ export default async function SeriesPage({ params }: PageProps<"/series/[id]">) 
 
   const own = user?.id === row.channel.id;
   // A stranger sees the public episodes; the owner sees every one, labelled.
-  const all = await seriesEpisodes(id, own);
-  const episodes = own ? all : all.filter((episode) => episode.visibility === "public");
+  const episodes = await seriesEpisodes(id, own);
   const cover = episodes[0]?.thumbnailUrl ?? null;
 
   return (

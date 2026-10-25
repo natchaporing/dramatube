@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import { count, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users, type User } from "@/db/schema";
 import { env } from "./env";
@@ -56,14 +56,16 @@ export function sessionCookieOptions() {
 }
 
 /**
- * The admin decision. ADMIN_EMAILS is authoritative when set — the role column
- * is written once at sign-up, so on an install where somebody else registered
- * first this is the only way to take moderation back. Unset, the role column
- * decides, and the first account to exist was given it.
+ * The admin decision: the role column, and nothing else.
+ *
+ * Nobody becomes a moderator by signing up. Accounts are not email-verified,
+ * so "the first account" or "whoever registers this address" would hand the
+ * moderation keys to whoever got there first — on a fresh deploy, that is a
+ * race anyone can enter. The operator grants the role from a shell on the
+ * server instead: `pnpm admin:grant you@example.com`.
  */
-export function isAdmin(user: Pick<User, "email" | "role">): boolean {
-  const named = env.adminEmails;
-  return named.length > 0 ? named.includes(user.email.toLowerCase()) : user.role === "admin";
+export function isAdmin(user: Pick<User, "role">): boolean {
+  return user.role === "admin";
 }
 
 export class AccountError extends Error {
@@ -100,15 +102,11 @@ export async function registerUser(opts: { email: string; name: string; password
     handle = await freeHandle(suggestHandle(opts.name || email));
   }
 
-  const [{ total }] = await db.select({ total: count() }).from(users);
-  const named = env.adminEmails;
-  const role = total === 0 || named.includes(email) ? "admin" : "member";
-
   const name = opts.name.trim().slice(0, 60) || email.split("@")[0];
   try {
     const [user] = await db
       .insert(users)
-      .values({ id: newId("user"), email, name, handle, passwordHash: await hashPassword(opts.password), role })
+      .values({ id: newId("user"), email, name, handle, passwordHash: await hashPassword(opts.password), role: "member" })
       .returning();
     return user;
   } catch (error) {

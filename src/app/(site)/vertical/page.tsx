@@ -6,6 +6,7 @@ import { VerticalFeed, type VerticalItem } from "@/components/vertical-feed";
 import { formatCount } from "@/lib/format";
 import { mediaUrl } from "@/lib/storage";
 import { pageContext } from "@/lib/viewer";
+import { issueViewTicket } from "@/lib/views";
 import { listVertical } from "@/lib/videos";
 
 export const metadata = { title: "Vertical" };
@@ -46,6 +47,8 @@ export default async function VerticalPage({ searchParams }: PageProps<"/vertica
       comments: formatCount(extra.commentCount, locale),
       models: video.aiModels.slice(0, 3),
       reaction: reactionBy.get(video.id) ?? 0,
+      ticket: issueViewTicket(video.id),
+      durationSec: video.durationSec,
     };
   });
 

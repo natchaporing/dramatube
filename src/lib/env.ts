@@ -55,12 +55,6 @@ export const env = {
     const mb = Number(read("UPLOAD_MAX_MB") ?? "2048");
     return (Number.isFinite(mb) && mb > 0 ? mb : 2048) * 1024 * 1024;
   },
-  get adminEmails(): string[] {
-    return (read("ADMIN_EMAILS") ?? "")
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
-  },
   get ffmpegPath() {
     return read("FFMPEG_PATH") ?? "ffmpeg";
   },

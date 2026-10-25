@@ -146,7 +146,8 @@ export function Shell({
             </div>
           </aside>
         )}
-        <main className="min-w-0 flex-1 pb-20 md:pb-0">{children}</main>
+        {/* Room for the phone's bottom bar, which the vertical feed does not show. */}
+        <main className={clsx("min-w-0 flex-1", !pathname.startsWith("/vertical") && "pb-20 md:pb-0")}>{children}</main>
       </div>
 
       {drawer && (

@@ -132,9 +132,9 @@ is inside the price; the payment fee is ~2% (PromptPay and cards blended).
 
 | | Direct | Discovered (40%) | Discovered (30%) |
 |---|---:|---:|---:|
-| Net revenue after VAT and fees | ฿8.63 | ฿8.63 | ฿8.63 |
+| Net revenue after VAT and fees | ฿8.62 | ฿8.62 | ฿8.62 |
 | Creator (credits × ฿0.30) | 21 cr = ฿6.30 | 12 cr = ฿3.60 | 9 cr = ฿2.70 |
-| **Platform keeps** | **฿2.33** | **฿5.03** | **฿5.93** |
+| **Platform keeps** | **฿2.32** | **฿5.02** | **฿5.92** |
 
 With credits from the ฿999 pack (more bonus, ฿7.63 net) the platform keeps
 about ฿1 less in each column. Hosting is near zero beside these: a 90-second

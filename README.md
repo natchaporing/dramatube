@@ -35,6 +35,24 @@ shows them in a panel beside the player, and rolls into the next episode when
 one ends (with a five-second countdown and a cancel button). Filing a video
 into a series without an episode number makes it the next episode.
 
+**A drama is browsed as a show.** The home page leads with series, not clips:
+Continue watching, Popular, a Top 10, New, Coming soon and a row of tropes,
+with the video feed below them. `/dramas` has the same as tabs (Popular, New,
+Rankings, Coming soon) and filters by trope; `/my-list` is the series a viewer
+saved. Each series shows as a tall 2:3 poster — the creator's own, or the
+first episode's picture whatever its shape: a tall one fills the frame, a
+wide or square one sits whole over a blurred copy of itself, so a 16:9 drama
+is never cropped to a sliver. A series page has the poster, Play (or Continue
+at the viewer's episode), My List, its tropes, and a numbered episode grid
+marking the locked and the watched ones.
+
+**Continue watching knows which episode.** The player says when an episode
+ends; the last episode of a series a viewer touched decides what comes next —
+that episode where they stopped, or the next one out if they finished it. A
+bar at the bottom of the browse pages offers it until they pick it up or close
+it. Tropes are DramaStudio's list, spelled the same way, so a series made
+there arrives already tagged.
+
 **Tools publish, not just people.** A creator can make a personal API token
 and publish in two calls — the raw file, then its details. That is how
 DramaStudio gets a "Publish" button, and how a render farm or a script can
@@ -138,7 +156,14 @@ curl -X POST "$DRAMATUBE/api/v1/videos" \
 | `POST /api/v1/videos` | Publish an upload. Only `uploadId` and `title` are required. `thumbnailBase64` optional |
 | `GET /api/v1/videos` | Your videos, newest first |
 | `GET/PATCH/DELETE /api/v1/videos/:id` | Read, change (fields left out keep their values), delete |
-| `GET/POST /api/v1/series` | List your series; create one with `{ title, description }` |
+| `GET/POST /api/v1/series` | List your series; create one. Only `title` is required |
+| `GET/PATCH /api/v1/series/:id` | Read or change one (fields left out keep their values) |
+
+A series takes `{ title, description, tropes, status, plannedEpisodes,
+premiereAt, posterBase64 }`: tropes from the list in `src/lib/tropes.ts`
+(unknown ones are dropped, five at most), `status` `ongoing` or `completed`,
+`premiereAt` a date (midnight in Bangkok) or a timestamp, and a 2:3 JPEG, PNG
+or WebP poster. `"posterBase64": null` removes the poster.
 
 An upload publishes once: publishing claims it first, so a double click or a
 retrying client makes one video, not two. An account can have three uploads
@@ -341,7 +366,10 @@ In rough order of what real traffic would demand first:
    DramaTube" button in DramaStudio using the API above.
 6. **Membership per creator** (phase 2 in the plan), charged from the wallet.
 7. **Recommendations** beyond "same series, same channel, same category,
-   trending", and **notifications** when a subscribed channel publishes.
-8. **Captions** (WebVTT tracks; DramaStudio already has the dialogue).
-9. **Provenance metadata** (C2PA) read from uploads and shown beside the
-   creator's own disclosure.
+   trending", and **notifications** when a subscribed channel publishes or a
+   saved series premieres.
+8. **Swipe to the next episode** in the player, and an episode grid beside
+   it as on the series page.
+9. **Captions** (WebVTT tracks; DramaStudio already has the dialogue).
+10. **Provenance metadata** (C2PA) read from uploads and shown beside the
+    creator's own disclosure.

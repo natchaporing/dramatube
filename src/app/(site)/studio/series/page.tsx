@@ -2,7 +2,7 @@ import Link from "next/link";
 import { deleteSeriesAction } from "@/app/actions/studio";
 import { ConfirmButton } from "@/components/studio/edit-form";
 import { EditSeriesForm, NewSeriesForm } from "@/components/studio/series-forms";
-import { Placeholder } from "@/components/video-card";
+import { PosterArt } from "@/components/series-poster";
 import { PricingForm } from "@/components/studio/pricing-form";
 import { sellerOf } from "@/lib/earnings";
 import { EXCLUSIVE_DAYS, isExclusive } from "@/lib/money";
@@ -12,6 +12,9 @@ import { pageContext } from "@/lib/viewer";
 import { listSeries } from "@/lib/videos";
 
 export const metadata = { title: "Series" };
+
+/** A premiere is a day in Bangkok, where the audience is; "en-CA" writes it as YYYY-MM-DD. */
+const BANGKOK_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" });
 
 export default async function StudioSeriesPage() {
   const { user, t } = await pageContext();
@@ -29,16 +32,25 @@ export default async function StudioSeriesPage() {
           <div className="space-y-4">
             {list.map((item) => (
               <div key={item.id} className="flex flex-col gap-4 rounded-xl border border-line p-4 sm:flex-row">
-                <Link href={`/series/${item.id}`} className="block w-full shrink-0 sm:w-48">
-                  <div className="aspect-video overflow-hidden rounded-lg bg-raised">
-                    {item.coverUrl ? <img src={item.coverUrl} alt="" className="h-full w-full object-cover" /> : <Placeholder title={item.title} />}
-                  </div>
+                <Link href={`/series/${item.id}`} className="block w-32 shrink-0 sm:w-40">
+                  <PosterArt card={item} className="rounded-lg" />
                   <div className="mt-1 text-xs text-muted">
                     {item.episodeCount === 1 ? t("series.oneEpisode") : t("series.episodes", { count: item.episodeCount })}
                   </div>
                 </Link>
                 <div className="min-w-0 flex-1">
-                  <EditSeriesForm id={item.id} title={item.title} description={item.description} />
+                  <EditSeriesForm
+                    initial={{
+                      id: item.id,
+                      title: item.title,
+                      description: item.description,
+                      hasPoster: Boolean(item.posterUrl),
+                      tropes: item.tropes,
+                      status: item.status,
+                      plannedEpisodes: item.plannedEpisodes,
+                      premiereDate: item.premiereAt ? BANGKOK_DATE.format(item.premiereAt) : "",
+                    }}
+                  />
                   <div className="mt-3">
                     <PricingForm
                       seriesId={item.id}

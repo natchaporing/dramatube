@@ -82,7 +82,7 @@ export async function deleteVideoAction(form: FormData) {
 export async function createSeriesAction(_prev: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   try {
-    await createSeries(user.id, text(form, "title"), text(form, "description"));
+    await createSeries(user.id, { title: text(form, "title"), description: text(form, "description") });
   } catch (error) {
     if (error instanceof StudioError) return { error: error.message };
     throw error;
@@ -94,12 +94,27 @@ export async function createSeriesAction(_prev: FormState, form: FormData): Prom
 export async function updateSeriesAction(_prev: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   try {
-    await updateSeries(user.id, text(form, "seriesId"), text(form, "title"), text(form, "description"));
+    await updateSeries(
+      user.id,
+      text(form, "seriesId"),
+      {
+        title: text(form, "title"),
+        description: text(form, "description"),
+        // An empty selection sends no "tropes" at all; the marker says the field was there.
+        tropes: form.has("tropesField") ? form.getAll("tropes") : undefined,
+        status: text(form, "status") || undefined,
+        plannedEpisodes: form.has("plannedEpisodes") ? text(form, "plannedEpisodes") : undefined,
+        premiereAt: form.has("premiereAt") ? text(form, "premiereAt") : undefined,
+      },
+      await imageFrom(form, "poster"),
+      form.get("removePoster") === "on",
+    );
   } catch (error) {
     if (error instanceof StudioError) return { error: error.message };
     throw error;
   }
-  revalidatePath("/studio/series");
+  // Posters and tropes show on the home shelves too.
+  revalidatePath("/", "layout");
   return { ok: Date.now() };
 }
 

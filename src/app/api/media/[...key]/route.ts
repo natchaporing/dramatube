@@ -16,9 +16,9 @@ import { canWatch } from "@/lib/videos";
  *
  * A video's file and thumbnail answer only to people who may watch the
  * video: a private one is the owner's, a removed one is the owner's and the
- * moderators'. Avatars and banners are public by nature. The check is one
- * primary-key lookup, which matters because a single playback is dozens of
- * Range requests.
+ * moderators'. Avatars, banners and series posters are public by nature. The
+ * check is one primary-key lookup, which matters because a single playback is
+ * dozens of Range requests.
  */
 async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">, head: boolean) {
   const { key: parts } = await ctx.params;
@@ -63,7 +63,7 @@ async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">
     // goes on sale, so a shared cache must never hold more than a few
     // minutes of a free public file, and never any paid or non-public one.
     cacheControl = open && video.visibility === "public" && !paid ? "public, max-age=300" : "private, no-store";
-  } else if (kind !== "avatars" && kind !== "banners") {
+  } else if (kind !== "avatars" && kind !== "banners" && kind !== "posters") {
     return new Response("Not found", { status: 404 });
   }
 

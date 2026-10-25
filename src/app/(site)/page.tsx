@@ -1,8 +1,12 @@
 import Link from "next/link";
 import clsx from "clsx";
-import { ChevronRight, Smartphone } from "lucide-react";
+import { ChevronRight, Clapperboard, Flame, Hourglass, Smartphone, Sparkles, Trophy } from "lucide-react";
+import { ContinueBar } from "@/components/continue-bar";
+import { PosterShelf, SHELF_POSTER, SeriesPoster, continueBarProps, tropeLabel } from "@/components/series-poster";
 import { EmptyState, VerticalCard, VideoGrid } from "@/components/video-card";
 import { CATEGORIES, isCategory } from "@/lib/catalog";
+import { continueWatching, shelf, usedTropes } from "@/lib/dramas";
+import { tropeSlug } from "@/lib/tropes";
 import { pageContext } from "@/lib/viewer";
 import { listFeed, withLocks, type FeedSort } from "@/lib/videos";
 
@@ -16,10 +20,19 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const page = Math.max(1, Math.min(50, Number(params.page) || 1));
   const { user, t, fmt } = await pageContext();
 
-  const [videos, vertical] = await Promise.all([
+  // Dramas lead the home page: the first page of "All", whatever the sort.
+  const dramas = !category && page === 1;
+  const [videos, vertical, cont, popular, top, fresh, coming, tropes] = await Promise.all([
     listFeed({ category, sort, limit: PAGE * page + 1, shape: category ? "any" : "horizontal" }).then((list) => withLocks(user, list)),
     category || page > 1 ? Promise.resolve([]) : listFeed({ shape: "vertical", limit: 12 }).then((list) => withLocks(user, list)),
+    dramas && user ? continueWatching(user.id) : Promise.resolve([]),
+    dramas ? shelf("popular", 18) : Promise.resolve([]),
+    dramas ? shelf("rankings", 10) : Promise.resolve([]),
+    dramas ? shelf("new", 18) : Promise.resolve([]),
+    dramas ? shelf("coming", 12) : Promise.resolve([]),
+    dramas ? usedTropes() : Promise.resolve([]),
   ]);
+  const anyDramas = popular.length > 0 || coming.length > 0;
   const hasMore = videos.length > PAGE * page;
   const shown = videos.slice(0, PAGE * page);
 
@@ -34,6 +47,23 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
     return text ? `/?${text}` : "/";
   };
 
+  // The sort is for the videos. Under the drama shelves it sits with them,
+  // not at the top of the page where it would seem to sort the dramas.
+  const sortTabs = (
+    <div className="mt-3 flex gap-4 text-sm" data-testid="sort-tabs">
+      {SORTS.map((s) => (
+        <Link
+          key={s}
+          href={href({ sort: s, page: 1 })}
+          scroll={!dramas}
+          className={clsx("border-b-2 pb-1", s === sort ? "border-text font-medium text-text" : "border-transparent text-muted hover:text-text")}
+        >
+          {t(`sort.${s}`)}
+        </Link>
+      ))}
+    </div>
+  );
+
   const chip = (active: boolean) =>
     clsx("chip", active ? "bg-text text-ground" : "bg-raised text-text hover:bg-hover");
 
@@ -43,7 +73,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const rest = shown.slice(8);
 
   return (
-    <div className="px-4 pb-12 sm:px-6">
+    <div className={clsx("px-4 sm:px-6", cont.length > 0 ? "pb-32" : "pb-12")}>
       <div className="sticky top-14 z-30 -mx-4 bg-ground/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="no-scrollbar flex gap-2 overflow-x-auto">
           <Link href={href({ c: null, page: 1 })} className={chip(!category)}>
@@ -55,18 +85,67 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
             </Link>
           ))}
         </div>
-        <div className="mt-3 flex gap-4 text-sm">
-          {SORTS.map((s) => (
-            <Link
-              key={s}
-              href={href({ sort: s, page: 1 })}
-              className={clsx("border-b-2 pb-1", s === sort ? "border-text font-medium text-text" : "border-transparent text-muted hover:text-text")}
-            >
-              {t(`sort.${s}`)}
-            </Link>
-          ))}
-        </div>
+        {!dramas && sortTabs}
       </div>
+
+      {dramas && (cont.length > 0 || anyDramas) && (
+        <div className="mt-4 space-y-8" data-testid="drama-shelves">
+          {cont.length > 0 && (
+            <PosterShelf title={t("home.continue")} fmt={fmt} testId="continue-shelf">
+              {cont.map((item) => (
+                <SeriesPoster key={item.series.id} card={item.series} fmt={fmt} progress={item} className={SHELF_POSTER} />
+              ))}
+            </PosterShelf>
+          )}
+          {popular.length > 0 && (
+            <PosterShelf title={<><Flame size={20} className="text-brand" /> {t("home.popularDramas")}</>} href="/dramas" fmt={fmt} testId="popular-shelf">
+              {popular.map((card) => (
+                <SeriesPoster key={card.id} card={card} fmt={fmt} className={SHELF_POSTER} />
+              ))}
+            </PosterShelf>
+          )}
+          {top.length >= 3 && (
+            <PosterShelf title={<><Trophy size={20} className="text-warn" /> {t("home.topDramas")}</>} href="/dramas?tab=rankings" fmt={fmt}>
+              {top.map((card, index) => (
+                <SeriesPoster key={card.id} card={card} fmt={fmt} rank={index + 1} className={SHELF_POSTER} />
+              ))}
+            </PosterShelf>
+          )}
+          {fresh.length > 0 && (
+            <PosterShelf title={<><Sparkles size={20} className="text-ai" /> {t("home.newDramas")}</>} href="/dramas?tab=new" fmt={fmt}>
+              {fresh.map((card) => (
+                <SeriesPoster key={card.id} card={card} fmt={fmt} className={SHELF_POSTER} />
+              ))}
+            </PosterShelf>
+          )}
+          {coming.length > 0 && (
+            <PosterShelf title={<><Hourglass size={20} className="text-ai" /> {t("home.comingSoon")}</>} href="/dramas?tab=coming" fmt={fmt}>
+              {coming.map((card) => (
+                <SeriesPoster key={card.id} card={card} fmt={fmt} className={SHELF_POSTER} />
+              ))}
+            </PosterShelf>
+          )}
+          {tropes.length > 0 && (
+            <section>
+              <h2 className="mb-3 text-lg font-bold text-text sm:text-xl">{t("home.byTrope")}</h2>
+              <div className="flex flex-wrap gap-2">
+                {tropes.map((trope) => (
+                  <Link key={trope} href={`/dramas?trope=${tropeSlug(trope)}`} className="chip bg-raised text-text hover:bg-hover">
+                    {tropeLabel(trope, fmt)}
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+          <div className="border-t border-line pt-6">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-text sm:text-xl">
+              <Clapperboard size={20} className="text-muted" /> {t("home.videos")}
+            </h2>
+            {sortTabs}
+          </div>
+        </div>
+      )}
+      {dramas && !(cont.length > 0 || anyDramas) && sortTabs}
 
       {shown.length === 0 && vertical.length === 0 ? (
         <EmptyState
@@ -108,6 +187,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           )}
         </div>
       )}
+      {cont[0] && <ContinueBar {...continueBarProps(cont[0], fmt)} />}
     </div>
   );
 }

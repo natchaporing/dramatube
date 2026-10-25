@@ -6,6 +6,7 @@ import { Suspense, useEffect, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
 import {
   ArrowLeft,
+  Bookmark,
   Clapperboard,
   Coins,
   House,
@@ -19,6 +20,7 @@ import {
   Smartphone,
   SquarePlus,
   ThumbsUp,
+  Tv,
   UserRound,
   Users,
 } from "lucide-react";
@@ -224,7 +226,7 @@ function CreditsChip({ credits }: { credits: number }) {
   return (
     <Link
       href="/wallet"
-      className="btn h-10 gap-1.5 border border-warn/30 bg-warn/10 px-3 text-warn hover:bg-warn/20"
+      className="btn h-10 gap-1.5 border border-warn/30 bg-warn/10 px-2.5 text-warn hover:bg-warn/20 sm:px-3"
       aria-label={t("nav.credits", { count: credits })}
       data-testid="credits-chip"
     >
@@ -237,7 +239,8 @@ function CreditsChip({ credits }: { credits: number }) {
 function UploadButton() {
   const { t } = useI18n();
   return (
-    <Link href="/upload" className="btn btn-ghost h-10 px-3" aria-label={t("nav.upload")}>
+    // Phones have Upload in the bottom bar; on a 390px screen the header has no room for it twice.
+    <Link href="/upload" className="btn btn-ghost hidden h-10 px-3 md:inline-flex" aria-label={t("nav.upload")}>
       <SquarePlus size={18} />
       <span className="hidden sm:inline">{t("nav.upload")}</span>
     </Link>
@@ -409,6 +412,7 @@ function SidebarFull({
     <nav className="pb-6 text-sm">
       <div className="px-3 pb-3">
         <NavLink href="/" icon={<House size={20} />} label={t("nav.home")} active={pathname === "/"} />
+        <NavLink href="/dramas" icon={<Tv size={20} />} label={t("nav.dramas")} active={pathname.startsWith("/dramas")} />
         <NavLink href="/vertical" icon={<Smartphone size={20} />} label={t("nav.vertical")} active={pathname.startsWith("/vertical")} />
         <NavLink
           href="/feed/subscriptions"
@@ -429,6 +433,7 @@ function SidebarFull({
             active={pathname === `/c/${user.handle}`}
           />
         )}
+        <NavLink href="/my-list" icon={<Bookmark size={20} />} label={t("nav.myList")} active={pathname === "/my-list"} />
         <NavLink href="/feed/history" icon={<RotateCcwClock size={20} />} label={t("nav.history")} active={pathname === "/feed/history"} />
         <NavLink href="/feed/liked" icon={<ThumbsUp size={20} />} label={t("nav.liked")} active={pathname === "/feed/liked"} />
         {user && (
@@ -482,7 +487,9 @@ function SidebarMini({ user, pathname }: { user: ShellUser | null; pathname: str
   return (
     <nav className="px-1 pt-1">
       <NavLink mini href="/" icon={<House size={22} />} label={t("nav.home")} active={pathname === "/"} />
+      <NavLink mini href="/dramas" icon={<Tv size={22} />} label={t("nav.dramas")} active={pathname.startsWith("/dramas")} />
       <NavLink mini href="/vertical" icon={<Smartphone size={22} />} label={t("nav.vertical")} active={pathname.startsWith("/vertical")} />
+      <NavLink mini href="/my-list" icon={<Bookmark size={22} />} label={t("nav.myList")} active={pathname === "/my-list"} />
       <NavLink
         mini
         href="/feed/subscriptions"
@@ -498,7 +505,10 @@ function SidebarMini({ user, pathname }: { user: ShellUser | null; pathname: str
   );
 }
 
-/** Phones get the five destinations at the thumb, as every video app does. */
+/**
+ * Phones get the five destinations at the thumb, as every drama app does:
+ * home, the swipe feed, upload, My List, and you (where subscriptions are).
+ */
 function BottomNav({ user, pathname }: { user: ShellUser | null; pathname: string }) {
   const { t } = useI18n();
   if (pathname.startsWith("/vertical")) return null;
@@ -519,9 +529,9 @@ function BottomNav({ user, pathname }: { user: ShellUser | null; pathname: strin
           <SquarePlus size={20} />
         </span>
       </Link>
-      <Link href="/feed/subscriptions" className={cell(pathname === "/feed/subscriptions")}>
-        <Users size={22} />
-        {t("nav.subscriptions")}
+      <Link href="/my-list" className={cell(pathname === "/my-list")}>
+        <Bookmark size={22} />
+        {t("nav.myList")}
       </Link>
       <Link href={user ? "/feed/you" : "/login"} className={cell(pathname === "/feed/you")}>
         {user ? <Avatar name={user.name} handle={user.handle} url={user.avatarUrl} size={22} /> : <UserRound size={22} />}

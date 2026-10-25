@@ -119,5 +119,7 @@ export const LIMITS = {
   bio: 1000,
   channelName: 60,
   seriesTitle: 100,
+  /** "EP 3 / 2000" is already more than anyone will make. */
+  plannedEpisodes: 2000,
   reportDetails: 1000,
 } as const;

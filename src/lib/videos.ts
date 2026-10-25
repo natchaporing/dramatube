@@ -412,7 +412,14 @@ export interface SeriesSummary {
   title: string;
   description: string;
   episodeCount: number;
+  posterUrl: string | null;
   coverUrl: string | null;
+  coverWidth: number;
+  coverHeight: number;
+  tropes: string[];
+  status: "ongoing" | "completed";
+  plannedEpisodes: number | null;
+  premiereAt: Date | null;
   firstEpisodeId: string | null;
   updatedAt: Date;
 }
@@ -428,12 +435,17 @@ export async function listSeries(channelId: string, includeEmpty = false): Promi
       id: series.id,
       title: series.title,
       description: series.description,
+      posterKey: series.posterKey,
+      tropes: series.tropes,
+      status: series.status,
+      plannedEpisodes: series.plannedEpisodes,
+      premiereAt: series.premiereAt,
       updatedAt: series.updatedAt,
       // Spelled out as "series"."id": in a one-table select Drizzle writes a
       // column unqualified, and a bare "id" inside these subqueries would mean
       // the video's id, matching nothing.
       episodeCount: sql<number>`(select count(*)::int from videos v where v.series_id = "series"."id" and v.visibility = 'public' and v.status = 'ready')`,
-      first: sql<string | null>`(select v.id || ' ' || coalesce(v.thumbnail_key, '') from videos v
+      first: sql<string | null>`(select v.id || ' ' || v.width || ' ' || v.height || ' ' || coalesce(v.thumbnail_key, '') from videos v
         where v.series_id = "series"."id" and v.visibility = 'public' and v.status = 'ready'
         order by v.episode_number asc nulls last, v.published_at asc limit 1)`,
     })
@@ -443,13 +455,20 @@ export async function listSeries(channelId: string, includeEmpty = false): Promi
   return rows
     .filter((row) => includeEmpty || row.episodeCount > 0)
     .map((row) => {
-      const [firstId, thumbKey] = row.first ? row.first.split(" ") : [null, null];
+      const [firstId, width, height, thumbKey] = row.first ? row.first.split(" ") : [null, "0", "0", null];
       return {
         id: row.id,
         title: row.title,
         description: row.description,
         episodeCount: row.episodeCount,
+        posterUrl: mediaUrl(row.posterKey),
         coverUrl: mediaUrl(thumbKey || null),
+        coverWidth: Number(width),
+        coverHeight: Number(height),
+        tropes: row.tropes,
+        status: row.status,
+        plannedEpisodes: row.plannedEpisodes,
+        premiereAt: row.premiereAt,
         firstEpisodeId: firstId,
         updatedAt: row.updatedAt,
       };

@@ -17,13 +17,13 @@
 import "./load-env";
 import { spawnSync } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { and, count, eq, sql } from "drizzle-orm";
 import { db, sql as client } from "../src/db";
-import { comments, purchases, reactions, sellers, series, subscriptions, users, videos, watchHistory } from "../src/db/schema";
+import { comments, myList, purchases, reactions, sellers, series, subscriptions, users, videos, watchHistory } from "../src/db/schema";
 import { withReferral } from "../src/lib/referral";
 import { unlockEpisode } from "../src/lib/unlock";
 import { grantPurchase } from "../src/lib/wallet";
@@ -67,10 +67,10 @@ function source(look: Look, w: number, h: number, d: number, hue: number): strin
   }
 }
 
-function renderClip(out: string, opts: { look: Look; vertical: boolean; seconds: number; hue: number; title: string; kicker: string; note: number }) {
-  const [w, h] = opts.vertical ? [720, 1280] : [1280, 720];
+function renderClip(out: string, opts: { look: Look; vertical: boolean; square?: boolean; seconds: number; hue: number; title: string; kicker: string; note: number }) {
+  const [w, h] = opts.square ? [960, 960] : opts.vertical ? [720, 1280] : [1280, 720];
   const d = opts.seconds;
-  const titleSize = opts.vertical ? 38 : 58;
+  const titleSize = opts.vertical ? 38 : opts.square ? 48 : 58;
   const text = FONT
     ? [
         `drawbox=x=0:y=ih*0.62:w=iw:h=ih*0.38:color=black@0.45:t=fill`,
@@ -100,6 +100,23 @@ function renderImage(out: string, opts: { w: number; h: number; hue: number; let
       : "";
   ffmpeg([
     "-f", "lavfi", "-i", `gradients=s=${opts.w}x${opts.h}:n=3:c0=0xff4f6d:c1=0x6b4cff:c2=0x101018:seed=${opts.hue}:duration=1,hue=h=${opts.hue}${draw}`,
+    "-frames:v", "1", "-q:v", "3", out,
+  ]);
+}
+
+/** A 2:3 series poster: the show's colours, its name, and a line above it. */
+function renderPoster(out: string, opts: { hue: number; title: string; kicker: string }) {
+  const size = opts.title.length > 12 ? 64 : 84;
+  const text = FONT
+    ? [
+        `drawbox=x=0:y=ih*0.58:w=iw:h=ih*0.42:color=black@0.55:t=fill`,
+        `drawtext=fontfile='${FONT}':text='${drawtextSafe(opts.kicker)}':fontcolor=0xffd36b:fontsize=30:x=(w-tw)/2:y=h*0.64`,
+        `drawtext=fontfile='${FONT}':text='${drawtextSafe(opts.title)}':fontcolor=white:fontsize=${size}:x=(w-tw)/2:y=h*0.64+56`,
+        `drawtext=fontfile='${FONT}':text='A DRAMATUBE ORIGINAL':fontcolor=white@0.7:fontsize=22:x=(w-tw)/2:y=h*0.9`,
+      ].join(",")
+    : "null";
+  ffmpeg([
+    "-f", "lavfi", "-i", `gradients=s=800x1200:n=4:c0=0xff4f6d:c1=0x6b4cff:c2=0x0e7c86:c3=0x101018:seed=${opts.hue}:duration=1,hue=h=${opts.hue},${text}`,
     "-frames:v", "1", "-q:v", "3", out,
   ]);
 }
@@ -136,6 +153,8 @@ interface VideoSeed {
   prompt?: string;
   look: Look;
   vertical?: boolean;
+  /** 1:1 — every shape a series can be in, so the shelves are tested on all of them. */
+  square?: boolean;
   seconds?: number;
   series?: string;
   episode?: number;
@@ -145,16 +164,63 @@ interface VideoSeed {
   sourceApp?: string;
 }
 
-const SERIES: Record<string, { channel: string; title: string; description: string }> = {
+interface SeriesSeed {
+  channel: string;
+  title: string;
+  description: string;
+  tropes: string[];
+  status: "ongoing" | "completed";
+  plannedEpisodes?: number;
+  /** Short enough to fit across a poster; no poster means the first episode's picture stands in. */
+  poster?: { title: string; kicker: string; hue: number };
+  /** Announced, nothing out yet: Coming soon. */
+  premiereInDays?: number;
+}
+
+const SERIES: Record<string, SeriesSeed> = {
   bkk: {
     channel: "neon",
     title: "Bangkok 2077",
     description: "A night courier in a drowned, neon Bangkok finds every screen in the city showing her own name. A vertical sci-fi drama in five episodes.",
+    tropes: ["Hidden Identity", "The Long Con"],
+    status: "ongoing",
+    plannedEpisodes: 5,
+    poster: { title: "BANGKOK 2077", kicker: "EVERY SCREEN KNOWS HER NAME", hue: 300 },
   },
   love: {
     channel: "neon",
     title: "รักนี้ไม่มีอยู่จริง (Love That Isn't Real)",
     description: "เธอตกหลุมรักผู้ชายที่ไม่มีตัวตน — เขาเป็นแค่ตัวละครที่ AI สร้างขึ้น หรือเปล่า\nA romance about falling for someone who might only exist in a render.",
+    tropes: ["Forbidden Love", "Fake Relationship"],
+    status: "ongoing",
+    plannedEpisodes: 12,
+  },
+  bride: {
+    channel: "neon",
+    title: "Contract Bride of Sukhumvit",
+    description: "One year, one signature, one rented ring. A square-format romantic comedy about the worst business deal in Bangkok.",
+    tropes: ["Contract Marriage", "Enemies to Lovers", "Rags to Riches"],
+    status: "ongoing",
+    plannedEpisodes: 30,
+    poster: { title: "CONTRACT BRIDE", kicker: "ONE YEAR. ONE SIGNATURE.", hue: 330 },
+  },
+  heir: {
+    channel: "paper",
+    title: "The Heir of Yaowarat",
+    description: "A gold-shop delivery boy learns his grandmother's ledger names him heir to the oldest shop on Yaowarat Road — and his cousins have other plans. Widescreen, in three parts.",
+    tropes: ["Heir Reveal", "Revenge Comeback", "Secret Child"],
+    status: "completed",
+    plannedEpisodes: 3,
+  },
+  orchard: {
+    channel: "paper",
+    title: "Glass Orchard",
+    description: "An exiled gardener comes home to an orchard whose fruit is made of glass. Premieres soon; the trailer is out now.",
+    tropes: ["Return of the Exile", "Found Family"],
+    status: "ongoing",
+    plannedEpisodes: 8,
+    poster: { title: "GLASS ORCHARD", kicker: "COMING HOME BREAKS THINGS", hue: 160 },
+    premiereInDays: 10,
   },
 };
 
@@ -167,6 +233,11 @@ const VIDEOS: VideoSeed[] = [
   { channel: "neon", series: "bkk", episode: 4, title: "Bangkok 2077 · EP4: Her Name in the Data", kicker: "EPISODE 4", overlay: "Her Name in the Data", description: "Somebody built the city's AI out of a girl's memories.", category: "drama", tags: ["bangkok", "cyberpunk"], models: ["Veo", "Kling", "ElevenLabs"], look: "cells", vertical: true, seconds: 8, views: 198_000, daysAgo: 5, sourceApp: "DramaStudio" },
   { channel: "neon", series: "love", episode: 1, title: "รักนี้ไม่มีอยู่จริง EP1 | เขาตอบแชตตอนตีสาม", kicker: "EP 1", overlay: "Love That Isn't Real", description: "มิ้นท์ได้รับข้อความจากผู้ชายที่ไม่มีใครเคยเห็นหน้า\nMint gets a message at 3 a.m. from a man nobody has ever met.", category: "drama", tags: ["romance", "ละครสั้น", "thai"], models: ["Seedance", "Nano Banana", "ElevenLabs"], look: "gradient", vertical: true, seconds: 8, views: 127_000, daysAgo: 9 },
   { channel: "neon", series: "love", episode: 2, title: "รักนี้ไม่มีอยู่จริง EP2 | นัดเจอที่สยาม", kicker: "EP 2", overlay: "Love That Isn't Real", description: "เขานัดเจอที่สยาม แต่ไม่มาตามนัด\nHe asks to meet at Siam. He never arrives.", category: "drama", tags: ["romance", "ละครสั้น", "thai"], models: ["Seedance", "Nano Banana", "ElevenLabs"], look: "plasma", vertical: true, seconds: 8, views: 88_400, daysAgo: 2 },
+  { channel: "neon", series: "bride", episode: 1, title: "Contract Bride EP1: One Year, One Signature", kicker: "EP 1", overlay: "One Year, One Signature", description: "Fah needs a husband for one year. Krit needs a wife who will not fall for him. They sign before lunch.", category: "drama", tags: ["romance", "comedy", "bangkok"], models: ["Seedance", "ElevenLabs"], look: "gradient", square: true, seconds: 6, views: 64_300, daysAgo: 3 },
+  { channel: "neon", series: "bride", episode: 2, title: "Contract Bride EP2: The Ring Is Rented", kicker: "EP 2", overlay: "The Ring Is Rented", description: "The ring has to go back on Monday. His grandmother wants to see it on Sunday.", category: "drama", tags: ["romance", "comedy"], models: ["Seedance", "ElevenLabs"], look: "plasma", square: true, seconds: 6, views: 31_900, daysAgo: 1 },
+  { channel: "paper", series: "heir", episode: 1, title: "The Heir of Yaowarat — Part 1: The Gold Shop", kicker: "PART 1", overlay: "The Gold Shop", description: "Tun delivers gold for a living. Today the parcel is addressed to him.", category: "drama", tags: ["yaowarat", "family drama"], models: ["Veo", "ElevenLabs"], look: "fractal", seconds: 6, views: 152_000, daysAgo: 10 },
+  { channel: "paper", series: "heir", episode: 2, title: "The Heir of Yaowarat — Part 2: Grandmother's Ledger", kicker: "PART 2", overlay: "Grandmother's Ledger", description: "The ledger has one more name in it than the family has members.", category: "drama", tags: ["yaowarat", "family drama"], models: ["Veo", "ElevenLabs"], look: "zone", seconds: 6, views: 118_000, daysAgo: 8 },
+  { channel: "paper", series: "heir", episode: 3, title: "The Heir of Yaowarat — Part 3: The Will Is Read", kicker: "PART 3", overlay: "The Will Is Read", description: "Everyone came for the gold. Tun came for the truth.", category: "drama", tags: ["yaowarat", "family drama"], models: ["Veo", "ElevenLabs"], look: "gradient", seconds: 6, views: 97_500, daysAgo: 6 },
 
   { channel: "paper", title: "The Salt Line — a short film", kicker: "SHORT FILM", overlay: "The Salt Line", description: "A ferry captain's daughter has one summer to decide whether to stay on the island.\n\n12 minutes in the full version; this is the opening.\n\nPictures: Veo and Midjourney. Score: Suno.", category: "short-film", tags: ["short film", "island", "drama"], models: ["Veo", "Midjourney", "Suno"], look: "gradient", seconds: 12, views: 96_300, daysAgo: 21 },
   { channel: "paper", title: "The Lighthouse Keeper's Daughter", kicker: "SHORT FILM", overlay: "The Lighthouse Keeper's Daughter", description: "A storm, a radio, and a voice that should not be there.", category: "short-film", tags: ["short film", "mystery"], models: ["Runway", "ElevenLabs"], look: "fractal", seconds: 10, views: 41_200, daysAgo: 14 },
@@ -221,11 +292,11 @@ async function main() {
       return;
     }
     await db.execute(
-      sql`truncate table referrals, payouts, earnings, unlocks, credit_ledger, credit_lots, purchases, sellers, reports, api_tokens, watch_history, views, comments, reactions, subscriptions, uploads, videos, series, users cascade`,
+      sql`truncate table my_list, referrals, payouts, earnings, credit_spends, unlocks, credit_ledger, credit_lots, purchases, sellers, reports, api_tokens, watch_history, views, comments, reactions, subscriptions, uploads, videos, series, users cascade`,
     );
     // The rows named the files; with the rows gone, local files are orphans.
     if (env.storageDriver === "local") {
-      for (const dir of ["videos", "thumbs", "avatars", "banners"]) {
+      for (const dir of ["videos", "thumbs", "avatars", "banners", "posters"]) {
         await rm(join(localRoot(), dir), { recursive: true, force: true });
       }
     }
@@ -244,7 +315,6 @@ async function main() {
       renderImage(banner, { w: 2048, h: 512, hue: channel.hue });
       const avatarKey = `avatars/${user.id}/${newObjectName()}.jpg`;
       const bannerKey = `banners/${user.id}/${newObjectName()}.jpg`;
-      const { readFile } = await import("node:fs/promises");
       await putBuffer(avatarKey, await readFile(avatar), "image/jpeg");
       await putBuffer(bannerKey, await readFile(banner), "image/jpeg");
       await db
@@ -256,15 +326,35 @@ async function main() {
 
     const seriesIds: Record<string, string> = {};
     for (const [key, item] of Object.entries(SERIES)) {
-      seriesIds[key] = (await createSeries(ids[item.channel], item.title, item.description)).id;
+      let poster: { data: Buffer } | null = null;
+      if (item.poster) {
+        const file = join(work, `${key}-poster.jpg`);
+        renderPoster(file, item.poster);
+        poster = { data: await readFile(file) };
+      }
+      const row = await createSeries(
+        ids[item.channel],
+        {
+          title: item.title,
+          description: item.description,
+          tropes: item.tropes,
+          status: item.status,
+          plannedEpisodes: item.plannedEpisodes ?? null,
+          premiereAt: item.premiereInDays ? new Date(Date.now() + item.premiereInDays * 86_400_000) : null,
+        },
+        poster,
+      );
+      seriesIds[key] = row.id;
+      console.log(`series ${row.id}  ${item.title}`);
     }
 
-    const published: Array<{ id: string; channel: string; views: number }> = [];
+    const published: Array<{ id: string; channel: string; views: number; series?: string }> = [];
     for (const [index, seed] of VIDEOS.entries()) {
       const file = join(work, `clip-${index}.mp4`);
       renderClip(file, {
         look: seed.look,
         vertical: Boolean(seed.vertical),
+        square: seed.square,
         seconds: seed.seconds ?? 8,
         hue: (index * 47) % 360,
         title: seed.overlay ?? seed.title,
@@ -299,7 +389,7 @@ async function main() {
           dislikeCount: Math.round(seed.views * 0.002),
         })
         .where(eq(videos.id, video.id));
-      published.push({ id: video.id, channel: seed.channel, views: seed.views });
+      published.push({ id: video.id, channel: seed.channel, views: seed.views, series: seed.series });
       console.log(`video ${video.id}  ${seed.title}`);
     }
 
@@ -349,8 +439,44 @@ async function main() {
     for (const video of published.filter((item) => item.channel !== "director").slice(0, 8)) {
       await db.insert(reactions).values({ userId: ids.director, videoId: video.id, value: 1 }).onConflictDoNothing();
       await db.update(videos).set({ likeCount: sql`${videos.likeCount} + 1` }).where(eq(videos.id, video.id));
-      await db.insert(watchHistory).values({ userId: ids.director, videoId: video.id, positionSec: 3 }).onConflictDoNothing();
+      // Episodes get their own history below, where it decides what Continue watching says.
+      if (!video.series) {
+        await db.insert(watchHistory).values({ userId: ids.director, videoId: video.id, positionSec: 3 }).onConflictDoNothing();
+      }
     }
+
+    // Where the director is in three series: half-way through Bangkok 2077's
+    // second episode, done with the first part of The Heir of Yaowarat (so
+    // the second is next), and Contract Bride just started. Glass Orchard and
+    // Love That Isn't Real are saved for later.
+    const episodeOf = async (key: string, number: number) =>
+      (
+        await db
+          .select({ id: videos.id })
+          .from(videos)
+          .where(and(eq(videos.seriesId, seriesIds[key]), eq(videos.episodeNumber, number)))
+          .limit(1)
+      )[0]?.id;
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000);
+    const history: Array<[string, number, number, boolean, number]> = [
+      ["bkk", 1, 0, true, 30],
+      ["bkk", 2, 4, false, 2],
+      ["heir", 1, 0, true, 5],
+      ["bride", 1, 2, false, 20],
+    ];
+    for (const [key, number, positionSec, done, hours] of history) {
+      const videoId = await episodeOf(key, number);
+      if (!videoId) continue;
+      const values = { positionSec, watchedAt: hoursAgo(hours), completedAt: done ? hoursAgo(hours) : null };
+      await db
+        .insert(watchHistory)
+        .values({ userId: ids.director, videoId, ...values })
+        .onConflictDoUpdate({ target: [watchHistory.userId, watchHistory.videoId], set: values });
+    }
+    await db.insert(myList).values([
+      { userId: ids.director, seriesId: seriesIds.orchard },
+      { userId: ids.director, seriesId: seriesIds.love, addedAt: hoursAgo(1) },
+    ]);
 
     // Money: Neon Lotus sells both its series; Paper Moon has applied and waits
     // for a moderator. The director has topped up once and bought an episode

@@ -255,6 +255,55 @@ async function main() {
     await a.goto(`${BASE}/watch/${secret.id}`);
     check(await a.isVisible(`h1:has-text("Secret episode ${run}")`), "…but plays for anyone with its link");
 
+    console.log("dramas");
+    // The creator shelves the series through the API: tropes, how long it runs, a poster.
+    const posterFile = join(work, "poster.jpg");
+    spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0xff4f6d:s=400x600", "-frames:v", "1", posterFile]);
+    const shelved = await (
+      await fetch(`${BASE}/api/v1/series/${series.id}`, {
+        method: "PATCH",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tropes: ["found family", "Werewolf", "Second Chance"],
+          plannedEpisodes: 12,
+          posterBase64: (await readFile(posterFile)).toString("base64"),
+        }),
+      })
+    ).json();
+    check(
+      JSON.stringify(shelved.tropes) === JSON.stringify(["Found Family", "Second Chance"]) && shelved.plannedEpisodes === 12 && shelved.status === "ongoing",
+      "the API shelves a series: known tropes only, episodes planned, the rest kept",
+    );
+    check(shelved.posterUrl && (await fetch(shelved.posterUrl)).status === 200, "…and its poster is served");
+    const badSeries = await fetch(`${BASE}/api/v1/series/${series.id}`, {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+    check(badSeries.status === 422, "a status that is not ongoing or completed is refused");
+    await a.goto(`${BASE}/dramas?trope=found-family`);
+    check((await a.locator(`[data-testid="series-poster"][href="/series/${series.id}"]`).count()) === 1, "the series is on its trope's shelf");
+    await a.goto(`${BASE}/series/${series.id}`);
+    check(await a.isVisible('[data-testid="episode-grid"]') && (await a.isVisible("text=EP 1 / 12")), "the series page counts episodes against the plan");
+
+    await v.goto(`${BASE}/series/${series.id}`);
+    await v.click('[data-testid="my-list-button"]');
+    await v.waitForSelector('[data-testid="my-list-button"][aria-pressed="true"]');
+    await v.goto(`${BASE}/my-list`);
+    check((await v.locator(`[data-testid="series-poster"][href="/series/${series.id}"]`).count()) === 1, "My List keeps a saved series");
+
+    // The viewer stops a second into the episode: home offers to pick it up there.
+    await v.evaluate(
+      (id) => fetch(`/api/videos/${id}/progress`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: 1 }) }),
+      apiVideo.id,
+    );
+    await v.goto(`${BASE}/`);
+    check((await v.locator(`[data-testid="continue-shelf"] a[href="/watch/${apiVideo.id}"]`).count()) === 1, "Continue watching picks the series up at the viewer's episode");
+    check(await v.isVisible('[data-testid="continue-bar"]'), "…and the Continue bar follows them");
+    await v.click('[data-testid="continue-bar"] button');
+    await v.goto(`${BASE}/dramas`);
+    check(!(await v.isVisible('[data-testid="continue-bar"]')), "…until they close it");
+
     console.log("money");
     const paidEpisodes: string[] = [];
     await v.goto(`${BASE}/wallet`);
@@ -409,6 +458,20 @@ async function main() {
     await anon.addCookies([{ name: "dt_lang", value: "th", url: BASE }]);
     await a.goto(`${BASE}/`);
     check(await a.isVisible("text=หน้าแรก"), "Thai is Thai once chosen");
+
+    console.log("phone");
+    // Signed in, in Thai, on a 390px phone: nothing may be wider than the screen.
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await phone.addCookies([...(await viewer.cookies()), { name: "dt_lang", value: "th", url: BASE }]);
+    const p = await phone.newPage();
+    const tooWide: string[] = [];
+    for (const path of ["/", "/dramas", `/series/${series.id}`, `/watch/${apiVideo.id}`, "/my-list", "/wallet", "/feed/you"]) {
+      await p.goto(`${BASE}${path}`);
+      const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      if (overflow > 0) tooWide.push(`${path} (+${overflow}px)`);
+    }
+    check(tooWide.length === 0, `every page fits a phone${tooWide.length ? `: ${tooWide.join(", ")}` : ""}`);
+    await phone.close();
 
     console.log("moderation");
     const adminContext = await browser.newContext();

@@ -62,6 +62,19 @@ export const series = pgTable(
     /** Exclusive to DramaTube for 90 days from this moment: +10 points of creator share. */
     exclusiveSince: timestamp("exclusive_since", { withTimezone: true }),
 
+    /* How the series is shelved. A drama is browsed as a show, not as a
+       pile of clips: a tall poster, the tropes it plays, whether it is
+       still coming out, and when it starts if it has not yet. */
+    /** A 2:3 poster. Without one the first episode's picture stands in, whatever its shape. */
+    posterKey: text("poster_key"),
+    /** From the shared list in src/lib/tropes.ts, which DramaStudio's writers' room uses too. */
+    tropes: text("tropes").array().notNull().default([]),
+    status: text("status", { enum: ["ongoing", "completed"] }).notNull().default("ongoing"),
+    /** How many episodes it will have, when the creator knows: "EP 3 / 40". */
+    plannedEpisodes: integer("planned_episodes"),
+    /** Announced but not out yet: shelved under Coming soon until its first episode. */
+    premiereAt: timestamp("premiere_at", { withTimezone: true }),
+
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -212,8 +225,25 @@ export const watchHistory = pgTable(
       .references(() => videos.id, { onDelete: "cascade" }),
     positionSec: real("position_sec").notNull().default(0),
     watchedAt: timestamp("watched_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Watched to the end, at least once: Continue watching moves on to the next episode. */
+    completedAt: timestamp("completed_at", { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.videoId] }), index("history_user_idx").on(t.userId, t.watchedAt)],
+);
+
+/** Series a viewer saved to watch: My List. */
+export const myList = pgTable(
+  "my_list",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    seriesId: text("series_id")
+      .notNull()
+      .references(() => series.id, { onDelete: "cascade" }),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.seriesId] }), index("my_list_user_idx").on(t.userId, t.addedAt)],
 );
 
 /**

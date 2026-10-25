@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Coins, LayoutDashboard, LogOut, Shield, SquarePlus } from "lucide-react";
+import { ChevronRight, Coins, LayoutDashboard, LogOut, Shield, SquarePlus, Users } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { SignInWall } from "@/components/sign-in-wall";
 import { VideoCard } from "@/components/video-card";
@@ -61,6 +61,10 @@ export default async function YouPage() {
             </Link>
             <Link href="/wallet" className="btn btn-ghost h-9">
               <Coins size={16} /> {t("nav.wallet")}
+            </Link>
+            {/* On a phone the bottom bar has My List where Subscriptions was; this is the way there. */}
+            <Link href="/feed/subscriptions" className="btn btn-ghost h-9">
+              <Users size={16} /> {t("nav.subscriptions")}
             </Link>
             {admin && (
               <Link href="/admin" className="btn btn-ghost h-9">

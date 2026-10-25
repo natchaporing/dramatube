@@ -12,6 +12,7 @@ import {
   isExclusive,
 } from "./money";
 import { handleProblem, normalizeHandle } from "./handles";
+import { normalizeTropes } from "./tropes";
 import { newId, newObjectName } from "./ids";
 import { checkImage, type ImageInput } from "./publish";
 import { deleteObject, putBuffer, videosArePrivate } from "./storage";
@@ -20,28 +21,112 @@ import { deleteObject, putBuffer, videosArePrivate } from "./storage";
 
 export class StudioError extends Error {}
 
-export async function createSeries(channelId: string, title: string, description = "") {
-  const name = title.trim().slice(0, LIMITS.seriesTitle);
-  if (!name) throw new StudioError("title");
+/** What a creator says about a series. Every field is optional on an update. */
+export interface SeriesInput {
+  title?: string;
+  description?: string;
+  tropes?: readonly unknown[];
+  status?: string;
+  /** Empty or null clears it. */
+  plannedEpisodes?: number | string | null;
+  /** A date ("2026-11-20") or a timestamp; empty or null clears it. */
+  premiereAt?: string | Date | null;
+}
+
+function cleanSeries(input: SeriesInput) {
+  const out: Partial<typeof series.$inferInsert> = {};
+  if (input.title !== undefined) {
+    const title = input.title.trim().slice(0, LIMITS.seriesTitle);
+    if (!title) throw new StudioError("title");
+    out.title = title;
+  }
+  if (input.description !== undefined) out.description = input.description.trim().slice(0, LIMITS.description);
+  if (input.tropes !== undefined) out.tropes = normalizeTropes(input.tropes);
+  if (input.status !== undefined) {
+    if (input.status !== "ongoing" && input.status !== "completed") throw new StudioError("status");
+    out.status = input.status;
+  }
+  if (input.plannedEpisodes !== undefined) {
+    const raw = input.plannedEpisodes;
+    if (raw === null || raw === "") out.plannedEpisodes = null;
+    else {
+      const count = Number(raw);
+      if (!Number.isInteger(count) || count < 1 || count > LIMITS.plannedEpisodes) throw new StudioError("planned");
+      out.plannedEpisodes = count;
+    }
+  }
+  if (input.premiereAt !== undefined) {
+    const raw = input.premiereAt;
+    if (raw === null || raw === "") out.premiereAt = null;
+    else {
+      // A bare date is midnight in Bangkok, where the audience is.
+      const at = raw instanceof Date ? raw : new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00+07:00` : raw);
+      if (Number.isNaN(at.getTime())) throw new StudioError("premiere");
+      out.premiereAt = at;
+    }
+  }
+  return out;
+}
+
+async function storePoster(seriesId: string, poster: ImageInput) {
+  let image;
+  try {
+    image = checkImage(poster);
+  } catch {
+    throw new StudioError("poster");
+  }
+  if (!image) return null;
+  const key = `posters/${seriesId}/${newObjectName()}.${image.ext}`;
+  await putBuffer(key, image.data, image.type);
+  return key;
+}
+
+export async function createSeries(channelId: string, input: SeriesInput & { title: string }, poster?: ImageInput | null) {
+  const values = cleanSeries(input);
+  const id = newId("ser");
+  const posterKey = poster ? await storePoster(id, poster) : null;
   const [row] = await db
     .insert(series)
-    .values({ id: newId("ser"), channelId, title: name, description: description.trim().slice(0, LIMITS.description) })
+    .values({ ...values, id, channelId, title: values.title!, posterKey })
     .returning();
   return row;
 }
 
-export async function updateSeries(channelId: string, seriesId: string, title: string, description: string) {
-  const name = title.trim().slice(0, LIMITS.seriesTitle);
-  if (!name) throw new StudioError("title");
-  await db
+/**
+ * Change what is given and keep the rest. A new poster replaces the old one;
+ * `removePoster` goes back to the first episode's picture.
+ */
+export async function updateSeries(
+  channelId: string,
+  seriesId: string,
+  input: SeriesInput,
+  poster?: ImageInput | null,
+  removePoster = false,
+) {
+  const [row] = await db
+    .select({ posterKey: series.posterKey })
+    .from(series)
+    .where(and(eq(series.id, seriesId), eq(series.channelId, channelId)))
+    .limit(1);
+  if (!row) throw new StudioError("not_found");
+  const values = cleanSeries(input);
+  const posterKey = poster ? await storePoster(seriesId, poster) : removePoster ? null : row.posterKey;
+  const [updated] = await db
     .update(series)
-    .set({ title: name, description: description.trim().slice(0, LIMITS.description), updatedAt: new Date() })
-    .where(and(eq(series.id, seriesId), eq(series.channelId, channelId)));
+    .set({ ...values, posterKey, updatedAt: new Date() })
+    .where(eq(series.id, seriesId))
+    .returning();
+  if (row.posterKey && row.posterKey !== posterKey) await deleteObject(row.posterKey).catch(() => {});
+  return updated;
 }
 
 /** The episodes stay; they just stop belonging to a series (ON DELETE SET NULL). */
 export async function deleteSeries(channelId: string, seriesId: string) {
-  await db.delete(series).where(and(eq(series.id, seriesId), eq(series.channelId, channelId)));
+  const [row] = await db
+    .delete(series)
+    .where(and(eq(series.id, seriesId), eq(series.channelId, channelId)))
+    .returning({ posterKey: series.posterKey });
+  if (row?.posterKey) await deleteObject(row.posterKey).catch(() => {});
 }
 
 export async function listOwnSeries(channelId: string) {

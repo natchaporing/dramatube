@@ -10,7 +10,7 @@
  * refunds after payout, card reversals, the ledger adding up.
  */
 import "./load-env";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, sql as client } from "../src/db";
 import { creditLedger, creditLots, earnings, payouts, purchases, sellers, series, unlocks, users, videos } from "../src/db/schema";
 import { locksFor } from "../src/lib/access";
@@ -44,8 +44,11 @@ async function rejects(promise: Promise<unknown>, code: string) {
   }
 }
 
+const made: string[] = [];
+
 async function user(name: string, role: "member" | "admin" = "member") {
   const id = newId("user");
+  made.push(id);
   await db.insert(users).values({ id, email: `${name}-${run}@money.example`, name, handle: `${name}${run}`.slice(0, 30), passwordHash: "x", role });
   return id;
 }
@@ -218,6 +221,8 @@ async function main() {
     check(again.since!.getTime() < Date.now() - 99 * 86_400_000, "…once: the window does not start again");
 
   } finally {
+    // Its accounts, and with them its series and episodes, so they never sit on a dev site's shelves.
+    if (made.length) await db.delete(users).where(inArray(users.id, made));
     await client.end();
   }
   if (failures > 0) {

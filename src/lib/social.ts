@@ -258,14 +258,23 @@ export async function recordView(
   return counted;
 }
 
-export async function saveProgress(userId: string, videoId: string, positionSec: number | null) {
-  const position = positionSec === null ? 0 : Math.max(0, Math.min(positionSec, 60 * 60 * 24));
+/**
+ * Where a viewer is in a video. `ended` means they watched it to the end:
+ * the position goes back to the start for the next visit, and the episode
+ * counts as finished, so Continue watching moves on to the next one.
+ */
+export async function saveProgress(userId: string, videoId: string, positionSec: number | null, ended = false) {
+  const position = positionSec === null || ended ? 0 : Math.max(0, Math.min(positionSec, 60 * 60 * 24));
+  const now = new Date();
   await db
     .insert(watchHistory)
-    .values({ userId, videoId, positionSec: position, watchedAt: new Date() })
+    .values({ userId, videoId, positionSec: position, watchedAt: now, completedAt: ended ? now : null })
     .onConflictDoUpdate({
       target: [watchHistory.userId, watchHistory.videoId],
-      set: positionSec === null ? { watchedAt: new Date() } : { positionSec: position, watchedAt: new Date() },
+      set:
+        positionSec === null && !ended
+          ? { watchedAt: now }
+          : { positionSec: position, watchedAt: now, ...(ended ? { completedAt: now } : {}) },
     });
 }
 

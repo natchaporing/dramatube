@@ -4,7 +4,8 @@ import { mediaUrl } from "./storage";
 import { userFromBearer } from "./tokens";
 import { PublishError } from "./publish";
 import { env } from "./env";
-import type { Video } from "@/db/schema";
+import type { Series, Video } from "@/db/schema";
+import type { SeriesInput } from "./studio";
 
 /** A bearer token if one is sent, otherwise the browser's session cookie. */
 export async function apiUser(request: Request, allowCookie: boolean) {
@@ -74,3 +75,41 @@ export function videoJson(video: Video, origin: string) {
     publishedAt: video.publishedAt.toISOString(),
   };
 }
+
+/** A series as the API gives it back. */
+export function seriesJson(row: Series, origin: string, episodeCount?: number) {
+  return {
+    id: row.id,
+    url: `${origin}/series/${row.id}`,
+    title: row.title,
+    description: row.description,
+    tropes: row.tropes,
+    status: row.status,
+    plannedEpisodes: row.plannedEpisodes,
+    premiereAt: row.premiereAt?.toISOString() ?? null,
+    posterUrl: absolute(mediaUrl(row.posterKey), origin),
+    ...(episodeCount === undefined ? {} : { episodeCount }),
+  };
+}
+
+/** What the API accepts for a series, on create and on update. */
+export function seriesBody(body: Record<string, unknown>): { input: SeriesInput; poster: { data: Buffer } | null; removePoster: boolean } {
+  const input: SeriesInput = {};
+  if (body.title !== undefined) input.title = String(body.title);
+  if (body.description !== undefined) input.description = String(body.description ?? "");
+  if (body.tropes !== undefined) input.tropes = Array.isArray(body.tropes) ? body.tropes : [];
+  if (body.status !== undefined) input.status = String(body.status);
+  if (body.plannedEpisodes !== undefined) input.plannedEpisodes = body.plannedEpisodes as number | null;
+  if (body.premiereAt !== undefined) input.premiereAt = body.premiereAt === null ? null : String(body.premiereAt);
+  const poster = typeof body.posterBase64 === "string" && body.posterBase64 ? { data: Buffer.from(body.posterBase64, "base64") } : null;
+  return { input, poster, removePoster: body.posterBase64 === null };
+}
+
+export const SERIES_ERRORS: Record<string, string> = {
+  title: "title is required",
+  status: "status must be ongoing or completed",
+  planned: "plannedEpisodes must be a whole number from 1 to 2000",
+  premiere: "premiereAt must be a date",
+  poster: "poster must be a JPEG, PNG or WebP image under the size limit",
+  not_found: "no such series of yours",
+};

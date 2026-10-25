@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import clsx from "clsx";
 import { Avatar } from "@/components/avatar";
-import { SeriesCard } from "@/components/series-card";
+import { PosterGrid, SeriesPoster } from "@/components/series-poster";
 import { EmptyState, VideoGrid } from "@/components/video-card";
 import { SubscribeButton } from "@/components/watch/actions";
 import { RichText } from "@/components/watch/rich-text";
@@ -11,7 +11,8 @@ import { normalizeHandle } from "@/lib/handles";
 import { isSubscribed } from "@/lib/social";
 import { mediaUrl } from "@/lib/storage";
 import { pageContext } from "@/lib/viewer";
-import { channelByHandle, channelStats, listChannelVideos, listPublicCount, listSeries, withLocks } from "@/lib/videos";
+import { channelSeriesCards } from "@/lib/dramas";
+import { channelByHandle, channelStats, listChannelVideos, listPublicCount, withLocks } from "@/lib/videos";
 
 const TABS = ["videos", "series", "about"] as const;
 type Tab = (typeof TABS)[number];
@@ -47,7 +48,7 @@ export default async function ChannelPage({ params, searchParams }: PageProps<"/
     user && !own ? isSubscribed(user.id, channel.id) : Promise.resolve(false),
     tab === "about" ? channelStats(channel.id, true) : Promise.resolve(null),
     tab === "videos" ? listChannelVideos(channel.id, { includeHidden: false, sort }).then((list) => withLocks(user, list)) : Promise.resolve([]),
-    tab === "series" ? listSeries(channel.id) : Promise.resolve([]),
+    tab === "series" ? channelSeriesCards(channel.id) : Promise.resolve([]),
   ]);
 
   const banner = mediaUrl(channel.bannerKey);
@@ -157,10 +158,12 @@ export default async function ChannelPage({ params, searchParams }: PageProps<"/
           (seriesList.length === 0 ? (
             <EmptyState title={t("channel.noSeries")} />
           ) : (
-            <div className="grid grid-cols-1 gap-x-4 gap-y-10 pt-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {seriesList.map((item) => (
-                <SeriesCard key={item.id} item={item} fmt={fmt} />
-              ))}
+            <div className="pt-2">
+              <PosterGrid>
+                {seriesList.map((card) => (
+                  <SeriesPoster key={card.id} card={card} fmt={fmt} />
+                ))}
+              </PosterGrid>
             </div>
           ))}
 

@@ -129,9 +129,9 @@ export function Player({
     else video.addEventListener("loadedmetadata", apply, { once: true });
   }, [startAt, durationSec]);
 
-  const saveProgress = (position: number, beacon = false) => {
+  const saveProgress = (position: number, beacon = false, ended = false) => {
     if (!signedIn) return;
-    const body = JSON.stringify({ position });
+    const body = JSON.stringify(ended ? { position, ended } : { position });
     const url = `/api/videos/${videoId}/progress`;
     if (beacon && navigator.sendBeacon) {
       navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
@@ -143,7 +143,8 @@ export function Player({
   useEffect(() => {
     const onHide = () => {
       const video = ref.current;
-      if (video && video.currentTime > 0) saveProgress(video.currentTime, true);
+      // At the end `onEnded` has already said so; the end position would undo it.
+      if (video && video.currentTime > 0 && !video.ended) saveProgress(video.currentTime, true);
     };
     window.addEventListener("pagehide", onHide);
     return () => {
@@ -177,8 +178,9 @@ export function Player({
   };
 
   const onEnded = () => {
-    // Finished: the next visit starts from the top, not the credits.
-    saveProgress(0);
+    // Finished: the next visit starts from the top, not the credits, and
+    // Continue watching moves on to the next episode.
+    saveProgress(0, false, true);
     if (next && readAutoplay()) setCountdown(5);
   };
 

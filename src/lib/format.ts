@@ -35,8 +35,14 @@ export function timeAgo(date: Date | string, locale: string, now: Date = new Dat
   return rtf.format(0, "minute");
 }
 
+/**
+ * Dates are days in Bangkok, where the audience is, whatever clock the server
+ * runs on: a premiere set for the 20th is the 20th, not the 19th in UTC.
+ */
+export const SITE_TIME_ZONE = "Asia/Bangkok";
+
 export function formatDate(date: Date | string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" }).format(
+  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", timeZone: SITE_TIME_ZONE }).format(
     typeof date === "string" ? new Date(date) : date,
   );
 }

@@ -548,7 +548,7 @@ export const th: Record<MessageKey, string> = {
   "studio.seriesError.title": "ตั้งชื่อซีรีส์",
   "studio.seriesError.status": "เลือกว่ายังไม่จบหรือจบแล้ว",
   "studio.seriesError.planned": "จำนวนตอนทั้งหมดต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 2000",
-  "studio.seriesError.premiere": "วันฉายไม่ถูกต้อง",
+  "studio.seriesError.premiere": "เลือกวันฉายภายในหนึ่งปีจากนี้",
   "studio.seriesError.poster": "โปสเตอร์ต้องเป็นไฟล์ JPEG, PNG หรือ WebP ขนาดไม่เกิน 8 MB",
   "studio.seriesError.not_found": "ไม่พบซีรีส์นี้",
   "trope.contract-marriage": "แต่งงานตามสัญญา",

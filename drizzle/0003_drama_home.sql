@@ -13,4 +13,5 @@ ALTER TABLE "series" ADD COLUMN "premiere_at" timestamp with time zone;--> state
 ALTER TABLE "watch_history" ADD COLUMN "completed_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "my_list" ADD CONSTRAINT "my_list_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "my_list" ADD CONSTRAINT "my_list_series_id_series_id_fk" FOREIGN KEY ("series_id") REFERENCES "public"."series"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "my_list_user_idx" ON "my_list" USING btree ("user_id","added_at");
+CREATE INDEX "my_list_user_idx" ON "my_list" USING btree ("user_id","added_at");--> statement-breakpoint
+CREATE INDEX "videos_series_listed_idx" ON "videos" USING btree ("series_id","episode_number") WHERE "videos"."visibility" = 'public' and "videos"."status" = 'ready';

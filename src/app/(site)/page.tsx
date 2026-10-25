@@ -5,7 +5,7 @@ import { ContinueBar } from "@/components/continue-bar";
 import { PosterShelf, SHELF_POSTER, SeriesPoster, continueBarProps, tropeLabel } from "@/components/series-poster";
 import { EmptyState, VerticalCard, VideoGrid } from "@/components/video-card";
 import { CATEGORIES, isCategory } from "@/lib/catalog";
-import { continueWatching, shelf, usedTropes } from "@/lib/dramas";
+import { cachedShelf, cachedUsedTropes, continueWatching } from "@/lib/dramas";
 import { tropeSlug } from "@/lib/tropes";
 import { pageContext } from "@/lib/viewer";
 import { listFeed, withLocks, type FeedSort } from "@/lib/videos";
@@ -26,11 +26,11 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
     listFeed({ category, sort, limit: PAGE * page + 1, shape: category ? "any" : "horizontal" }).then((list) => withLocks(user, list)),
     category || page > 1 ? Promise.resolve([]) : listFeed({ shape: "vertical", limit: 12 }).then((list) => withLocks(user, list)),
     dramas && user ? continueWatching(user.id) : Promise.resolve([]),
-    dramas ? shelf("popular", 18) : Promise.resolve([]),
-    dramas ? shelf("rankings", 10) : Promise.resolve([]),
-    dramas ? shelf("new", 18) : Promise.resolve([]),
-    dramas ? shelf("coming", 12) : Promise.resolve([]),
-    dramas ? usedTropes() : Promise.resolve([]),
+    dramas ? cachedShelf("popular", 18) : Promise.resolve([]),
+    dramas ? cachedShelf("rankings", 10) : Promise.resolve([]),
+    dramas ? cachedShelf("new", 18) : Promise.resolve([]),
+    dramas ? cachedShelf("coming", 12) : Promise.resolve([]),
+    dramas ? cachedUsedTropes() : Promise.resolve([]),
   ]);
   const anyDramas = popular.length > 0 || coming.length > 0;
   const hasMore = videos.length > PAGE * page;

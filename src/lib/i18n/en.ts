@@ -552,7 +552,7 @@ export const en = {
   "studio.seriesError.title": "Give the series a title.",
   "studio.seriesError.status": "Choose ongoing or completed.",
   "studio.seriesError.planned": "Episodes planned must be a whole number from 1 to 2000.",
-  "studio.seriesError.premiere": "That premiere date isn't a date.",
+  "studio.seriesError.premiere": "Choose a premiere date within the next year.",
   "studio.seriesError.poster": "The poster must be a JPEG, PNG or WebP image under 8 MB.",
   "studio.seriesError.not_found": "That series doesn't exist.",
   "trope.contract-marriage": "Contract Marriage",

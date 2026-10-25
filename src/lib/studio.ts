@@ -50,6 +50,7 @@ function cleanSeries(input: SeriesInput) {
     const raw = input.plannedEpisodes;
     if (raw === null || raw === "") out.plannedEpisodes = null;
     else {
+      if (typeof raw !== "number" && typeof raw !== "string") throw new StudioError("planned");
       const count = Number(raw);
       if (!Number.isInteger(count) || count < 1 || count > LIMITS.plannedEpisodes) throw new StudioError("planned");
       out.plannedEpisodes = count;
@@ -59,13 +60,29 @@ function cleanSeries(input: SeriesInput) {
     const raw = input.premiereAt;
     if (raw === null || raw === "") out.premiereAt = null;
     else {
-      // A bare date is midnight in Bangkok, where the audience is.
-      const at = raw instanceof Date ? raw : new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00+07:00` : raw);
-      if (Number.isNaN(at.getTime())) throw new StudioError("premiere");
+      const at = raw instanceof Date ? raw : typeof raw === "string" ? bangkokTime(raw) : null;
+      if (!at || Number.isNaN(at.getTime())) throw new StudioError("premiere");
+      // An announcement is for something coming: a year ahead at most.
+      if (at.getTime() > Date.now() + PREMIERE_MAX_DAYS * 86_400_000) throw new StudioError("premiere");
       out.premiereAt = at;
     }
   }
   return out;
+}
+
+const PREMIERE_MAX_DAYS = 366;
+
+/**
+ * A date or a time with no zone means Bangkok, where the audience is:
+ * "2026-11-20" and "2026-11-20T20:00" are that day and hour there, not in
+ * whatever zone the server runs. A time with a zone keeps it.
+ */
+function bangkokTime(text: string): Date | null {
+  const value = text.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T00:00:00+07:00`);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value)) return new Date(`${value}+07:00`);
+  if (/^\d{4}-\d{2}-\d{2}T.+(Z|[+-]\d{2}:?\d{2})$/.test(value)) return new Date(value);
+  return null;
 }
 
 async function storePoster(seriesId: string, poster: ImageInput) {
@@ -75,7 +92,8 @@ async function storePoster(seriesId: string, poster: ImageInput) {
   } catch {
     throw new StudioError("poster");
   }
-  if (!image) return null;
+  // Something was sent and it was nothing: an error, never "no poster", which would delete the one there is.
+  if (!image) throw new StudioError("poster");
   const key = `posters/${seriesId}/${newObjectName()}.${image.ext}`;
   await putBuffer(key, image.data, image.type);
   return key;
@@ -85,11 +103,16 @@ export async function createSeries(channelId: string, input: SeriesInput & { tit
   const values = cleanSeries(input);
   const id = newId("ser");
   const posterKey = poster ? await storePoster(id, poster) : null;
-  const [row] = await db
-    .insert(series)
-    .values({ ...values, id, channelId, title: values.title!, posterKey })
-    .returning();
-  return row;
+  try {
+    const [row] = await db
+      .insert(series)
+      .values({ ...values, id, channelId, title: values.title!, posterKey })
+      .returning();
+    return row;
+  } catch (error) {
+    if (posterKey) await deleteObject(posterKey).catch(() => {});
+    throw error;
+  }
 }
 
 /**

@@ -53,6 +53,12 @@ bar at the bottom of the browse pages offers it until they pick it up or close
 it. Tropes are DramaStudio's list, spelled the same way, so a series made
 there arrives already tagged.
 
+The shelves are the same for everyone, so each is kept for a minute per
+server process; a new episode reaches the home page within a minute. Coming
+soon only shows announcements from channels that already have something
+public, and a premiere can be at most a year ahead. Dates on the site are days
+in Bangkok, whatever clock the server runs on.
+
 **Tools publish, not just people.** A creator can make a personal API token
 and publish in two calls — the raw file, then its details. That is how
 DramaStudio gets a "Publish" button, and how a render farm or a script can
@@ -369,7 +375,8 @@ In rough order of what real traffic would demand first:
    trending", and **notifications** when a subscribed channel publishes or a
    saved series premieres.
 8. **Swipe to the next episode** in the player, and an episode grid beside
-   it as on the series page.
+   it as on the series page. **Reporting a series** (its poster or blurb):
+   today only episodes can be reported.
 9. **Captions** (WebVTT tracks; DramaStudio already has the dialogue).
 10. **Provenance metadata** (C2PA) read from uploads and shown beside the
     creator's own disclosure.

@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { ContinueBar } from "@/components/continue-bar";
 import { PosterGrid, SeriesPoster, continueBarProps, tropeLabel } from "@/components/series-poster";
 import { EmptyState } from "@/components/video-card";
-import { continueWatching, seriesWithTrope, shelf, usedTropes, type Shelf } from "@/lib/dramas";
+import { cachedShelf, cachedUsedTropes, continueWatching, seriesWithTrope, type Shelf } from "@/lib/dramas";
 import { tropeFromSlug, tropeSlug } from "@/lib/tropes";
 import { pageContext } from "@/lib/viewer";
 
@@ -20,8 +20,8 @@ export default async function DramasPage({ searchParams }: PageProps<"/dramas">)
   const { user, t, fmt } = await pageContext();
 
   const [list, tropes, cont] = await Promise.all([
-    trope ? seriesWithTrope(trope, 96) : shelf(tab, 96),
-    usedTropes(),
+    trope ? seriesWithTrope(trope, 96) : cachedShelf(tab, 96),
+    cachedUsedTropes(),
     user ? continueWatching(user.id, 1) : Promise.resolve([]),
   ]);
 

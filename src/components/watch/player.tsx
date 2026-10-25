@@ -208,7 +208,8 @@ export function Player({
         className="h-full w-full"
         onTimeUpdate={onTimeUpdate}
         onSeeking={() => (lastTick.current = null)}
-        onPause={() => ref.current && saveProgress(ref.current.currentTime)}
+        // At the end the browser pauses, then ends: the pause must not overwrite "finished".
+        onPause={() => ref.current && !ref.current.ended && saveProgress(ref.current.currentTime)}
         onEnded={onEnded}
         onPlay={() => setCountdown(null)}
       />

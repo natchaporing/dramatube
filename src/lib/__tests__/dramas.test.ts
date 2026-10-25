@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { continuePoint, isFinished } from "../continue";
+import { formatDate } from "../format";
 import { MAX_TROPES, TROPES, normalizeTropes, tropeFromSlug, tropeSlug } from "../tropes";
 import { en } from "../i18n/en";
 import { th } from "../i18n/th";
@@ -27,6 +28,10 @@ describe("continue watching", () => {
     // Five seconds of credits would be most of an eight-second clip.
     expect(isFinished({ positionSec: 4, durationSec: 8, completed: false })).toBe(false);
     expect(isFinished({ positionSec: 7.5, durationSec: 8, completed: false })).toBe(true);
+  });
+  it("goes by the player's word when the episode's length is unknown", () => {
+    expect(isFinished({ positionSec: 0, durationSec: 0, completed: true })).toBe(true);
+    expect(isFinished({ positionSec: 40, durationSec: 0, completed: false })).toBe(false);
   });
   it("treats a finished episode that was started again as unfinished", () => {
     expect(isFinished({ positionSec: 90, durationSec: 240, completed: true })).toBe(false);
@@ -56,5 +61,12 @@ describe("tropes", () => {
       expect(en[key], trope).toBeTruthy();
       expect(th[key], trope).toBeTruthy();
     }
+  });
+});
+
+describe("dates", () => {
+  it("are days in Bangkok whatever the server's clock", () => {
+    // Midnight on the 20th in Bangkok is still the 19th in UTC.
+    expect(formatDate(new Date("2026-11-19T17:00:00Z"), "en")).toBe("Nov 20, 2026");
   });
 });

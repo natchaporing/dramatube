@@ -137,6 +137,10 @@ export const videos = pgTable(
     index("videos_channel_idx").on(t.channelId, t.publishedAt),
     index("videos_feed_idx").on(t.visibility, t.status, t.publishedAt),
     index("videos_series_idx").on(t.seriesId, t.episodeNumber),
+    // What every shelf adds up: a series' episodes that strangers can watch.
+    index("videos_series_listed_idx")
+      .on(t.seriesId, t.episodeNumber)
+      .where(sql`${t.visibility} = 'public' and ${t.status} = 'ready'`),
   ],
 );
 

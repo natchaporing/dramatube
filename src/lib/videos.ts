@@ -130,10 +130,11 @@ function cards() {
 /**
  * Trending: engagement over age, the shape every ranked feed converges on.
  * A like is worth a few views; the age term means last week's hit gives way
- * to today's without anybody deciding it should.
+ * to today's without anybody deciding it should. In floating point: Postgres
+ * does `extract` in exact decimals, which is ten times slower over every row.
  */
 const trendingScore = sql`(${videos.viewCount} + 4 * ${videos.likeCount} + 2 * ${videos.commentCount} + 1)
-  / power(extract(epoch from (now() - ${videos.publishedAt})) / 3600 + 2, 1.4)`;
+  / power(extract(epoch from (now() - ${videos.publishedAt}))::float8 / 3600 + 2, 1.4)`;
 
 const verticalOnly = sql`${videos.height} > ${videos.width}`;
 const horizontalOnly = sql`${videos.height} <= ${videos.width}`;

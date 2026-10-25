@@ -36,8 +36,10 @@ function endSlack(durationSec: number): number {
 }
 
 export function isFinished(last: Pick<LastWatched, "positionSec" | "durationSec" | "completed">): boolean {
+  // With no known length, the player saying it ended is all there is to go on.
+  if (last.durationSec <= 0) return last.completed;
   const slack = endSlack(last.durationSec);
-  const nearEnd = last.durationSec > 0 && last.positionSec >= last.durationSec - slack;
+  const nearEnd = last.positionSec >= last.durationSec - slack;
   // Finished once and not restarted since: the position went back to the start.
   const finishedAndReset = last.completed && last.positionSec < Math.max(1, slack);
   return nearEnd || finishedAndReset;

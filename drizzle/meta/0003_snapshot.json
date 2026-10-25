@@ -1,5 +1,5 @@
 {
-  "id": "01344aaa-5c8e-4a93-8e52-7107047077f0",
+  "id": "18dc9444-3075-4d08-9da9-452759ab70c6",
   "prevId": "35a93120-f09a-477a-a257-88e39cbb5e43",
   "version": "7",
   "dialect": "postgresql",
@@ -2243,6 +2243,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "videos_series_listed_idx": {
+          "name": "videos_series_listed_idx",
+          "columns": [
+            {
+              "expression": "series_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "episode_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"videos\".\"visibility\" = 'public' and \"videos\".\"status\" = 'ready'",
           "concurrently": false,
           "method": "btree",
           "with": {}

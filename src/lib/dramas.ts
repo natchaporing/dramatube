@@ -115,7 +115,7 @@ async function seriesCards(opts: { where: SQL; order: SQL; limit: number; join?:
              min(v.published_at) as first_published,
              max(v.published_at) as latest_published,
              coalesce(sum((v.view_count + 4 * v.like_count + 2 * v.comment_count + 1)
-               / power(extract(epoch from (now() - v.published_at)) / 3600 + 2, 1.4)), 0)::float8 as score
+               / power(extract(epoch from (now() - v.published_at))::float8 / 3600 + 2, 1.4)), 0)::float8 as score
       from videos v
       where v.series_id = s.id and v.visibility = 'public' and v.status = 'ready'
     ) agg
@@ -135,6 +135,33 @@ async function seriesCards(opts: { where: SQL; order: SQL; limit: number; join?:
 
 const hasEpisodes = sql`agg.episode_count > 0`;
 
+/**
+ * The shelves are the same for everybody and add up every episode of every
+ * series, so each is kept for a minute per server process: a new episode or
+ * poster reaches the home page within a minute, and a busy home page costs
+ * one query a minute, not one per visitor.
+ */
+const SHELF_TTL_MS = 60_000;
+const remembered = new Map<string, { at: number; value: Promise<unknown> }>();
+
+function remember<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = remembered.get(key);
+  if (hit && Date.now() - hit.at < SHELF_TTL_MS) return hit.value as Promise<T>;
+  const value = load();
+  remembered.set(key, { at: Date.now(), value });
+  // A failure is not kept: the next visitor asks again.
+  value.catch(() => remembered.delete(key));
+  return value;
+}
+
+export function cachedShelf(kind: Shelf, limit = 24): Promise<SeriesCard[]> {
+  return remember(`shelf:${kind}:${limit}`, () => shelf(kind, limit));
+}
+
+export function cachedUsedTropes(): Promise<string[]> {
+  return remember("tropes", usedTropes);
+}
+
 /** A shelf of the drama home. */
 export async function shelf(kind: Shelf, limit = 24): Promise<SeriesCard[]> {
   switch (kind) {
@@ -149,7 +176,15 @@ export async function shelf(kind: Shelf, limit = 24): Promise<SeriesCard[]> {
     case "rankings":
       return seriesCards({ where: hasEpisodes, order: sql`agg.total_views desc, agg.score desc`, limit });
     case "coming":
-      return seriesCards({ where: sql`s.premiere_at > now() and agg.episode_count = 0`, order: sql`s.premiere_at asc`, limit });
+      // Announcements go on everybody's home page, so only from a channel with
+      // something already out — and already past moderation — not from an
+      // account made a minute ago to show a poster.
+      return seriesCards({
+        where: sql`s.premiere_at > now() and agg.episode_count = 0
+          and exists (select 1 from videos v where v.channel_id = s.channel_id and v.visibility = 'public' and v.status = 'ready')`,
+        order: sql`s.premiere_at asc`,
+        limit,
+      });
   }
 }
 
@@ -226,7 +261,7 @@ export interface ContinueItem extends ContinuePoint {
  * The series this viewer is part-way through, most recent first, each with
  * the episode to play next and where in it.
  */
-export async function continueWatching(userId: string, limit = 12): Promise<ContinueItem[]> {
+export async function continueWatching(userId: string, limit = 12, onlySeries?: string): Promise<ContinueItem[]> {
   const rows = (await db.execute(sql`
     select distinct on (v.series_id)
            v.series_id, v.id as video_id, v.episode_number, v.duration_sec,
@@ -234,6 +269,7 @@ export async function continueWatching(userId: string, limit = 12): Promise<Cont
     from watch_history h
     join videos v on v.id = h.video_id
     where h.user_id = ${userId} and v.series_id is not null and v.status = 'ready' and v.visibility <> 'private'
+      ${onlySeries ? sql`and v.series_id = ${onlySeries}` : sql``}
     order by v.series_id, h.watched_at desc
   `)) as unknown as Record<string, unknown>[];
   const recent = rows
@@ -249,8 +285,8 @@ export async function continueWatching(userId: string, limit = 12): Promise<Cont
       watchedAt: date(row.watched_at)!,
     }))
     .sort((a, b) => b.watchedAt.getTime() - a.watchedAt.getTime())
-    // Some will have nothing left to continue; look at a few more than are shown.
-    .slice(0, limit * 2);
+    // Some will have nothing left to continue; look at a good many more than are shown.
+    .slice(0, Math.max(limit * 3, 24));
   if (recent.length === 0) return [];
 
   const ids = recent.map((item) => item.seriesId);
@@ -279,5 +315,5 @@ export async function continueWatching(userId: string, limit = 12): Promise<Cont
 
 /** Where this viewer is in one series, for its page's Play / Continue button. */
 export async function continueInSeries(userId: string, seriesId: string): Promise<ContinueItem | null> {
-  return (await continueWatching(userId, 50)).find((item) => item.series.id === seriesId) ?? null;
+  return (await continueWatching(userId, 1, seriesId))[0] ?? null;
 }

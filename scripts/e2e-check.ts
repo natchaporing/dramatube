@@ -281,6 +281,12 @@ async function main() {
       body: JSON.stringify({ status: "cancelled" }),
     });
     check(badSeries.status === 422, "a status that is not ongoing or completed is refused");
+    const patchSeries = (body: object) =>
+      fetch(`${BASE}/api/v1/series/${series.id}`, { method: "PATCH", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const badPoster = await patchSeries({ posterBase64: "@@@@" });
+    const kept = await (await fetch(`${BASE}/api/v1/series/${series.id}`, { headers: auth })).json();
+    check(badPoster.status === 422 && kept.posterUrl === shelved.posterUrl, "a poster that is not an image is refused, and the old one stays");
+    check((await patchSeries({ premiereAt: "9999-01-01" })).status === 422, "a premiere more than a year away is refused");
     await a.goto(`${BASE}/dramas?trope=found-family`);
     check((await a.locator(`[data-testid="series-poster"][href="/series/${series.id}"]`).count()) === 1, "the series is on its trope's shelf");
     await a.goto(`${BASE}/series/${series.id}`);
@@ -288,7 +294,8 @@ async function main() {
 
     await v.goto(`${BASE}/series/${series.id}`);
     await v.click('[data-testid="my-list-button"]');
-    await v.waitForSelector('[data-testid="my-list-button"][aria-pressed="true"]');
+    // The button answers at once; wait for the server to have saved it too.
+    await v.waitForSelector('[data-testid="my-list-button"][aria-pressed="true"]:not([disabled])');
     await v.goto(`${BASE}/my-list`);
     check((await v.locator(`[data-testid="series-poster"][href="/series/${series.id}"]`).count()) === 1, "My List keeps a saved series");
 

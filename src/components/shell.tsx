@@ -105,7 +105,7 @@ export function Shell({
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-2 bg-ground/95 px-2 backdrop-blur sm:px-4">
+      <header className="sticky top-0 z-40 flex h-14 items-center gap-1 bg-ground/95 px-2 backdrop-blur sm:gap-2 sm:px-4">
         {searching ? (
           <div className="flex flex-1 items-center gap-2 md:hidden">
             <button className="btn btn-quiet h-10 w-10 p-0" onClick={() => setSearching(false)} aria-label="Back">
@@ -247,6 +247,33 @@ function UploadButton() {
   );
 }
 
+/** The languages as plain choices, for the sidebar and the phone's menu drawer. */
+function LanguageLinks() {
+  const { t, locale } = useI18n();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <div className="flex items-center gap-1 border-t border-line px-6 py-3 text-sm" data-testid="language-links">
+      <Languages size={16} className="mr-1 text-muted" aria-label={t("nav.language")} />
+      {LOCALES.map((code) => (
+        <button
+          key={code}
+          disabled={pending || code === locale}
+          className={clsx("rounded-full px-2.5 py-1", code === locale ? "bg-raised font-medium text-text" : "text-muted hover:text-text")}
+          onClick={() =>
+            start(async () => {
+              await setLanguageAction(code);
+              router.refresh();
+            })
+          }
+        >
+          {LOCALE_NAMES[code]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function LanguageMenu() {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -254,7 +281,8 @@ function LanguageMenu() {
   const [pending, start] = useTransition();
   const ref = useDismiss(open, () => setOpen(false));
   return (
-    <div className="relative" ref={ref}>
+    // On a phone the header has no room for it; the menu drawer has the languages instead.
+    <div className="relative hidden sm:block" ref={ref}>
       <button
         className="btn btn-quiet h-10 w-10 p-0"
         onClick={() => setOpen((value) => !value)}
@@ -477,6 +505,7 @@ function SidebarFull({
           />
         ))}
       </div>
+      <LanguageLinks />
       <p className="border-t border-line px-6 pt-4 text-xs leading-relaxed text-faint">{t("nav.footer")}</p>
     </nav>
   );

@@ -5,6 +5,7 @@ import { EditSeriesForm, NewSeriesForm } from "@/components/studio/series-forms"
 import { PosterArt } from "@/components/series-poster";
 import { PricingForm } from "@/components/studio/pricing-form";
 import { sellerOf } from "@/lib/earnings";
+import { SITE_TIME_ZONE } from "@/lib/format";
 import { EXCLUSIVE_DAYS, isExclusive } from "@/lib/money";
 import { siteOrigin } from "@/lib/origin-server";
 import { ownSeriesPricing } from "@/lib/studio";
@@ -14,7 +15,7 @@ import { listSeries } from "@/lib/videos";
 export const metadata = { title: "Series" };
 
 /** A premiere is a day in Bangkok, where the audience is; "en-CA" writes it as YYYY-MM-DD. */
-const BANGKOK_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" });
+const BANGKOK_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: SITE_TIME_ZONE });
 
 export default async function StudioSeriesPage() {
   const { user, t } = await pageContext();

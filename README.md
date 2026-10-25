@@ -190,6 +190,62 @@ first thing to build when real traffic arrives; see below.
 
 ---
 
+## Selling episodes
+
+The plan behind this is in [`docs/MONETIZATION.md`](docs/MONETIZATION.md);
+this is how the built part works.
+
+**Viewers buy credits and spend them.** Packs run from a once-per-account
+฿19 first top-up (90 credits) to ฿999 (3,600). Credits are kept as lots:
+bought credits never expire, bonus credits expire after 90 days and are
+spent first. Every movement writes a ledger line, which is the wallet's
+history page.
+
+**Payments are hybrid.** PromptPay goes through Omise as a QR on our own pay
+page; cards go through Stripe Checkout. Each covers for the other: with no
+Omise key Stripe takes PromptPay too. With neither, the wallet says top-ups
+are not set up. A payment is believed only after asking the provider
+directly — the webhook is a prompt, not proof — and the credits granted are
+the ones written on the purchase row before the viewer paid, granted once
+however often a provider repeats itself. `ALLOW_DEV_PAYMENTS=1` adds a
+"simulate payment" button for development and the e2e check; never set it in
+production.
+
+**Creators sell series.** A creator applies to sell (legal name, PromptPay
+number, date of birth, 20 or older) and a moderator approves. They then put a
+series on sale from Studio → Series: how many episodes are free, the price
+per episode (10–60 credits), what the rest of the series costs at once
+(50–100% of buying one by one), and optionally 90 days of exclusivity for
+ten more points of share.
+
+**The paywall is on the file.** A locked episode's page shows the paywall,
+and the media route refuses its file to anyone who has not bought it, so a
+copied file address does not get round it. Paid files are never given a
+shared-cache header. The vertical feed leaves locked episodes out, and an
+embed sends the viewer to DramaTube to buy. **Selling needs a private bucket**:
+video files always go through the checked route, and with a public bucket a
+buyer could share a file's address directly.
+
+**Who brought the viewer decides the share.** A creator's own links carry
+`?ref=<handle>`; a viewer who arrives through one buys from that creator at
+70% for 30 days (remembered in a signed cookie and on the account). Every
+other sale is 40%. The Studio earnings page shows each sale's source.
+
+**Getting paid.** Earnings are held 14 days, the refund window, then can be
+cashed out from ฿500 at ฿0.30 a credit. A payout request copies the seller's
+PromptPay number at that moment; a moderator sends the transfer and marks it
+paid with its reference on the Moderation page. If a sold episode is removed
+or deleted, its buyers inside the window get their credits back and the
+creator's matching earnings are reversed.
+
+Neither gateway is reachable from CI, so both adapters are written to their
+documentation and are untested against a live account: the Stripe webhook's
+signature check and the choice of provider are unit-tested, and the whole
+flow from top-up to payout request is exercised end to end against the
+stand-in. Try one real ฿19 top-up on each method before launch.
+
+---
+
 ## Accounts, channels, moderation
 
 One account is one channel, at `/@handle`. Handles are ASCII on purpose — they
@@ -251,12 +307,13 @@ In rough order of what real traffic would demand first:
 2. **Rate limits** on sign-up, comments and reports. Uploads are capped per
    account, but nothing stops one person making many accounts.
 3. **Email verification and password reset.**
-4. **Recommendations** beyond "same series, same channel, same category,
-   trending".
-5. **Notifications** when a subscribed channel publishes.
-6. **Captions** (WebVTT tracks; DramaStudio already has the dialogue).
-7. **Provenance metadata** (C2PA) read from uploads and shown beside the
+4. **Automated payouts.** Payout requests are sent by hand from the
+   Moderation page today; a payout API (Omise transfers) would do it.
+5. **Spending earnings on DramaStudio renders at 1.2×**, and a "Publish to
+   DramaTube" button in DramaStudio using the API above.
+6. **Membership per creator** (phase 2 in the plan), charged from the wallet.
+7. **Recommendations** beyond "same series, same channel, same category,
+   trending", and **notifications** when a subscribed channel publishes.
+8. **Captions** (WebVTT tracks; DramaStudio already has the dialogue).
+9. **Provenance metadata** (C2PA) read from uploads and shown beside the
    creator's own disclosure.
-8. **A "Publish to DramaTube" button in DramaStudio**, using the API above.
-9. **Monetisation**: credits and per-episode unlocks, planned in
-   [`docs/MONETIZATION.md`](docs/MONETIZATION.md).

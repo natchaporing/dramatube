@@ -248,6 +248,14 @@ else, which is why per-member beats a single pool.
 
 ## 10. What to build, in order
 
+**Status (October 2026): steps 1–5 are built** — the wallet, hybrid top-ups
+(PromptPay through Omise, cards through Stripe), series pricing with whole-
+series prices, the paywall on the file, attribution, earnings, seller
+verification and payout requests sent by hand from the Moderation page.
+Decided: 40% on discovered sales, whole-series prices in the first version,
+hybrid payments.
+
+
 1. **Wallet and ledger** — append-only; bought, bonus and earned balances;
    bonus expiry. DramaStudio's ledger is the model to copy.
 2. **Top-ups** — PromptPay and cards through Stripe (or a Thai gateway), with

@@ -102,11 +102,14 @@ export function SeriesPoster({
             {rank}
           </span>
         )}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-6 text-right text-[11px] font-medium text-white">
+        <div className="absolute inset-x-0 bottom-0 truncate whitespace-nowrap bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-6 text-right text-[11px] font-medium text-white">
           {progress ? (
             <span data-testid="continue-tally">{episodeTally(card, fmt, progress.episodeNumber ?? 1)}</span>
           ) : card.upcoming ? (
             <span>{formatDate(card.premiereAt!, fmt.locale)}</span>
+          ) : rank !== undefined ? (
+            // The rank says how popular it is; beside the big numeral there is room for the episodes only.
+            <span>{episodeTally(card, fmt)}</span>
           ) : (
             <span className="inline-flex items-center gap-1">
               <Play size={10} className="fill-white" />

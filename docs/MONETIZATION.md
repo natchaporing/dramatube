@@ -1,45 +1,60 @@
-# Making money: episode unlocks, packages, creator share
+# Business model: a marketplace on a credit wallet
 
-The model: viewers buy credits and spend them to unlock episodes. Every unlock
-is split between the creator and the platform.
-
-> **One thing to settle first.** "Creator gets 30%" and "30 credits → creator
-> 10, platform 20" are different numbers. 10 of 30 is **33.3%**; 30% of 30
-> would be 9. This plan uses **one credit in three** (10 of 30). That matches
-> the example and is the easier sentence to tell a creator. If 30% is the real
-> intention, change one number, `CREATOR_SHARE`, and every table below scales.
+**For:** local creators who want to sell what they make.
+**The question:** credits (pay per episode) or a subscription?
+**The answer:** both are needed, but in this order — **credits first, as the
+wallet and the way an episode is sold; a subscription per creator second;
+a platform-wide unlimited plan last, and only if the catalogue earns it.**
 
 Two confidence levels, as in DramaStudio's `docs/PRICING.md`: **[H]** is
-arithmetic on numbers chosen here. **[M]** is market pricing from secondary
-sources (October 2026). It points the right way but should be checked before
-launch.
+arithmetic on numbers chosen here. **[M]** is market information from
+secondary sources (October 2026), right in direction but worth checking
+before launch.
 
 ---
 
-## 1. The credit
+## 1. Why not a subscription first
 
-**One credit, two products.** A DramaTube credit is the same unit as a
-DramaStudio credit: one US cent, about **฿0.33**. That matters for three reasons:
+Four reasons, each enough on its own.
 
-- A creator's earnings can be spent rendering the next episode in DramaStudio
-  with no conversion. This is the flywheel: *earn on DramaTube, make on
-  DramaStudio.*
-- Paying a creator in render credits costs the platform far less than paying
-  cash. DramaStudio sells renders at a 60% gross margin, so 10 credits spent on
-  rendering costs about 4 credits of real provider cost [H].
-- A viewer who becomes a creator already has a wallet.
+1. **A creator selling a production needs a sale.** "Your episode sold 1,200
+   times at ฿10" is a sentence a creator understands, can put in a pitch, and
+   can plan a season around. "Your share of this month's pool was ฿3,100" is
+   not: it depends on what everyone else did, and it changes when the platform
+   changes a formula. A marketplace pays per sale.
+2. **A new catalogue cannot sell "unlimited".** Unlimited is worth paying for
+   when there is more to watch than a month holds. With fifty series it is a
+   smaller promise than DramaBox makes, at the same price.
+3. **PromptPay cannot bill next month.** It is a one-off QR payment; Stripe,
+   Rapyd and Airwallex all list recurring as unsupported for it [M]. A
+   subscription in Thailand therefore means a card, which fewer people have
+   and trust, or an app-store subscription, which pays the store 15–30%
+   first. A wallet topped up by QR is the Thai-native rail, and it makes
+   every later product — memberships included — payable by PromptPay.
+4. **Pools invite fraud and arguments.** A shared pot split by watch time
+   pays whoever generates the most plays, real or not, and every creator
+   suspects the formula. Per-sale money has neither problem.
 
-**Episode price: 30 credits ≈ ฿10.** That is cheaper than the incumbent
-micro-drama apps. ReelShort charges roughly 50–60 coins an episode on a
-$4.99/500-coin pack (about $0.50–0.60), and finishing a series there runs
-$28–47 [M]. Being cheaper is deliberate: AI production costs a fraction of a
-filmed drama, and the platform is new and has to win viewers.
+Credits are not the business model. They are the **wallet**: top up once by
+QR, spend many times, because a ฿10 payment cannot carry a per-transaction
+fee. The model is **creators set prices and sell**.
 
 ---
 
-## 2. Viewer packages
+## 2. The credit
 
-### Top-up packs
+**One credit = $0.01 ≈ ฿0.33**, the same unit DramaStudio renders with.
+A creator's earnings can be spent on the next season in DramaStudio with no
+conversion, and paying creators in render credits costs the platform about
+half what cash does, because renders carry a 60% gross margin [H].
+
+The suggested episode price is **30 credits ≈ ฿10**, cheaper than
+ReelShort's roughly $0.50–0.60 an episode [M]. AI production costs a fraction
+of a film crew, and a new platform wins viewers on price.
+
+---
+
+## 3. Viewer packs
 
 Base rate **฿1 = 3 credits**, with a bonus that grows with the pack.
 
@@ -52,212 +67,212 @@ Base rate **฿1 = 3 credits**, with a bonus that grows with the pack.
 | Super fan | ฿499 | 1,500 | +225 (15%) | 1,725 | 57 | 0.289 |
 | Whale | ฿999 | 3,000 | +600 (20%) | 3,600 | 120 | 0.278 |
 
-- **Bought credits never expire. Bonus credits expire after 90 days.** This is
-  universal across credit products, and it is what people expect [M].
-- **The first top-up at ฿19 is the most important price on the page.** It
-  turns a free viewer into a paying one for less than a coffee. Making it
-  once per account limits what it costs the platform.
+- **Bought credits never expire. Bonus credits expire after 90 days.**
+- **The ฿19 first top-up is the most important price on the page:** a free
+  viewer becomes a paying one for less than a coffee. Once per account.
+- **No daily free credits at launch.** DramaBox gives them because ads pay
+  for its free viewers; here every free credit spent on an episode is money
+  owed to a creator. Free sampling is the creator's decision instead: the
+  first episodes of every series are free (at least one, 5–10 recommended).
+- **Unlocks are permanent.** No rental.
 
-### Plus membership (monthly)
+---
 
-| | **DramaTube Plus** |
-|---|---|
-| Monthly | **฿149** |
-| Yearly | **฿1,490** (two months free) |
-| Credits each month | 450 (expire at the end of the month) |
-| Unlock discount | **20% off every episode** (24 instead of 30), including with bought credits |
-| Early access | New episodes 24 hours before everyone else |
-| Daily check-in | Doubled |
-| Badge | Plus badge beside comments |
+## 4. What a creator sells
 
-With the discount, the 450 monthly credits unlock about 19 episodes, against
-15 at full price. **The creator is paid as if the viewer paid full price.** The
-discount comes out of the platform's share, so a creator never earns less
-because their viewer subscribed.
+The creator sets the prices, inside limits, from Studio or through the API.
 
-### Series pass
-
-The creator can offer the rest of a series at a discount; the suggested
-default is **70% of the remaining episodes' price**. A 34-episode paywall at
-30 credits is 1,020 credits one by one, or **714** as a pass. The creator gets
-one third of whatever was paid. A pass is a binge viewer's best deal, and
-selling every episode in one decision is a creator's best deal.
-
-### Free ways in
-
-| Path | What the viewer gets | Rule |
+| | Default | Range |
 |---|---|---|
-| Free episodes | The first episodes of every series | At least 1, recommended 5–10. The creator sets where the paywall lands, and DramaStudio already plans this per episode |
-| Daily check-in | 3 credits a day, plus 15 on day 7 | About one free episode a week. These are bonus credits and expire in 7 days |
-| Unlocks are permanent | Rewatch forever | No rental |
+| Free episodes at the start of a series | 5 | 1 or more |
+| Price per episode | 30 credits | 10–60, in steps of 5 |
+| Whole-series price (the rest of the series at once) | 70% of the remaining episodes | 50–100% |
+| Early window (phase 2) | — | New episodes unlock-only for 7 days before members see them |
+
+A whole-series price is how a creator sells a *production* rather than ten
+episodes: one decision for the viewer, one sale for the creator.
 
 ---
 
-## 3. What happens to 30 credits
+## 5. The split: it depends on who brought the viewer
 
-### The headline split
+A new platform has no audience. At launch, creators bring their own viewers
+by sharing links; later, DramaTube's home page, search and feeds bring
+viewers to creators. Those are different services and are charged
+differently — the same way Gumroad charges 10% on sales a creator brings and
+30% on sales its marketplace makes [M].
 
-| | Credits | ≈ Baht |
-|---|---:|---:|
-| Viewer spends | 30 | ฿10.00 at the base rate |
-| **Creator earns** | **10** | **฿3.00** (paid out at ฿0.30 per credit) |
-| Platform keeps | 20 | ≈ ฿6.67 before costs |
+Every unlock is attributed. A viewer who arrived through the creator's own
+share link (`/@handle?ref` or any link the creator copies from Studio) is
+**direct** for 30 days; anyone else is **discovered**.
 
-### What the platform really keeps [H]
+| Sale | Creator keeps | Platform keeps | Why |
+|---|---:|---:|---|
+| **Direct** — the viewer came from the creator's own link | **70%** | 30% | The platform hosted, played and took the payment |
+| **Discovered** — DramaTube's home, search, feed or another page found the viewer | **40%** | 60% | The platform also found the customer |
+| Partner Exclusive (series exclusive to DramaTube for 90 days) | +10 points on either | | |
 
-The platform's 20 credits are not all profit. VAT and payment fees come out of
-them, and so do bonus credits, because the creator is paid on every unlock
-whichever credits it used.
+The headline to creators: **"Bring your own fans and keep 70%. We find you
+new ones and you keep 40%."** It also aligns the incentive exactly right: a
+creator who promotes earns more, and the platform earns most on the sales it
+worked for.
 
-| Per paid unlock (web payment) | Base pack (฿99) | Biggest pack (฿999) |
-|---|---:|---:|
-| Cash behind 30 credits | ฿9.43 | ฿8.33 |
-| − VAT 7% (prices include it) | −฿0.62 | −฿0.54 |
-| − Payment fee (~2%, PromptPay/cards blended) | −฿0.19 | −฿0.17 |
-| Net revenue | ฿8.62 | ฿7.61 |
-| − Creator (10 credits × ฿0.30) | −฿3.00 | −฿3.00 |
-| **Platform keeps** | **฿5.62 (65%)** | **฿4.61 (61%)** |
+> **Your number was 30% for the creator.** Using it for the discovered tier is
+> one change in this table and raises the platform's take per discovered
+> unlock by about ฿0.90 [H]. The reason to prefer 40%: "we keep 70% of your
+> sales" is a hard sentence on a creator page when Tapas pays 50% and YouTube
+> pays 45–55% [M], and the extra ฿0.90 buys little. Either way, the direct
+> tier is what makes the offer competitive at launch, when nearly every sale
+> is direct.
 
-Hosting is close to zero by comparison. A 90-second 720p episode is about
-40 MB, and Cloudflare R2 charges nothing for egress.
+### What the platform really keeps per paid unlock [H]
 
-**An unlock paid with free credits costs the platform the creator's ฿3.00.**
-That is why the first top-up is once per account, check-in credits are small
-and expire in seven days, and bonus credits expire in 90. If free credits stay
-under about 20% of all credits spent, the platform keeps roughly ฿3–4 per
-unlock across everything.
+A 30-credit unlock, paid with credits from the ฿99 pack (฿9.43 cash). VAT 7%
+is inside the price; the payment fee is ~2% (PromptPay and cards blended).
 
-**App stores change the arithmetic.** Credits bought inside an iPhone or
-Android app pay the store 15–30%. At 30%, the platform keeps about ฿2.5–3 per paid
-unlock. Sell on the web first: PromptPay is the habit in Thailand, and it
-costs about a percent through a Thai gateway. In the apps, give fewer credits
-per baht than on the web, as most credit apps do, and check each store's
-current rules before launch.
+| | Direct | Discovered (40%) | Discovered (30%) |
+|---|---:|---:|---:|
+| Net revenue after VAT and fees | ฿8.63 | ฿8.63 | ฿8.63 |
+| Creator (credits × ฿0.30) | 21 cr = ฿6.30 | 12 cr = ฿3.60 | 9 cr = ฿2.70 |
+| **Platform keeps** | **฿2.33** | **฿5.03** | **฿5.93** |
+
+With credits from the ฿999 pack (more bonus, ฿7.63 net) the platform keeps
+about ฿1 less in each column. Hosting is near zero beside these: a 90-second
+720p episode is about 40 MB and Cloudflare R2 charges nothing for egress.
+Credits bought inside an iPhone or Android app pay the store 15–30% before
+any of this, so sell on the web with PromptPay first and give fewer credits
+per baht in the apps, as the credit apps do.
 
 ---
 
-## 4. Creator packages
+## 6. Creator accounts
 
-Joining is free and nothing is charged to upload. Creators are the supply side
-of a new platform, and charging them shrinks the catalogue at the moment it
-most needs to grow.
+Joining and uploading are free. Creators are the supply of a new platform,
+and charging them shrinks the catalogue when it most needs to grow.
 
-| | **Creator** | **Partner** | **Partner Exclusive** |
+| | **Creator** | **Seller** | **Seller, Exclusive** |
 |---|---|---|---|
-| Who | Anyone | Applies and is approved | A Partner whose series is exclusive to DramaTube for its first 90 days |
-| Requirements | — | One series with at least 5 episodes; every video's AI disclosure filled in; ID verified, age 20 or over (the Thai age of majority); bank or PromptPay account; no upheld strikes | Same, plus the exclusivity commitment per series |
-| Paywall | No: everything is free | Yes | Yes |
-| **Share per unlock** | — | **1 in 3: 10 of every 30 credits** | **2 in 5: 12 of every 30 credits** |
-| Episode price | — | Chosen from 10–60 credits in steps of 5; 30 suggested for 1–2 minute episodes | Same |
-| Series pass | — | Yes | Yes |
-| Promotion | Search and feeds | Eligible for the home page shelf | A featured launch slot for each new series |
+| Who | Anyone | Verified: ID, age 20+ (Thai majority), PromptPay or bank account, every video's AI disclosure filled in, no upheld strikes | A Seller whose series is exclusive to DramaTube for its first 90 days |
+| Can charge | No | Yes: episode price, series price, free episodes | Yes |
+| Share | — | 70% direct / 40% discovered | 80% / 50% |
+| Promotion | Search and feeds | Eligible for the home shelf | A featured launch slot per series |
 
 ### Getting paid
 
-- **Earnings arrive in credits**, with their baht value shown beside them
-  (฿0.30 each).
-- **A 14-day hold** before earnings become available. It covers refunds,
-  meaning episodes that fail to play or are removed by a moderator, and payment
-  disputes.
-- **Cash out** once a month when the balance is at least ฿500 (1,667 credits,
-  about 167 unlocks), by PromptPay or bank transfer. Withholding tax and
-  e-tax receipts follow Thai rules, so confirm the treatment of creator income
-  with an accountant before the first payout.
-- **Or spend earnings in DramaStudio at 1.2×**, any time and with no minimum:
-  10 earned credits buy 12 render credits. That is a better deal for the
-  creator than cash. It also costs the platform about half as much as a cash
-  payout, because render credits carry a 60% margin [H].
-
-### DramaStudio bundle
-
-A creator on any paid DramaStudio plan gets **Partner fast-track**: review
-inside 48 hours, and the 5-episode minimum waived for their first series.
-Publishing goes straight from DramaStudio through the API, which already
-exists.
+- Earnings arrive in credits with their baht value beside them (฿0.30 each).
+- **14-day hold** for refunds (episodes that fail to play or are removed) and
+  payment disputes.
+- **Cash out monthly by PromptPay** from ฿500 (about 1,667 credits). Thai
+  withholding tax and e-tax receipts apply; confirm the treatment of creator
+  income with an accountant before the first payout run.
+- **Or spend earnings in DramaStudio at 1.2×**, any time, no minimum: 10
+  earned credits buy 12 render credits. Better for the creator than cash, and
+  about half the cost to the platform [H].
 
 ---
 
-## 5. A worked example (illustrative, not a forecast)
+## 7. A worked example (illustrative)
 
-The numbers below are assumptions chosen to show the mechanics. Replace them
-with real funnel data as soon as there is any.
-
-A 40-episode drama of 90-second episodes. Episodes 1–6 are free and 34 are
-paid at 30 credits.
+A 40-episode drama of 90-second episodes: 6 free, 34 at 30 credits. The
+funnel numbers are assumptions; replace them with real ones as soon as
+there are any.
 
 | Step | Assumption | People |
 |---|---|---:|
 | Watch episode 1 | — | 50,000 |
 | Reach the paywall | 20% | 10,000 |
-| Pay for at least one episode | 8% of those | 800 |
-| Paid episodes per payer, on average | 20 | 16,000 unlocks |
+| Pay for at least one episode | 8% | 800 |
+| Paid episodes per payer | 20 | 16,000 unlocks |
+| Direct : discovered | 60 : 40 (a creator who promotes) | 9,600 : 6,400 |
 
 | | Credits | ≈ Baht |
 |---|---:|---:|
-| Viewers spend | 480,000 | ≈ ฿115,000 in cash (if 20% were free credits and packs average ฿0.30 a credit) |
-| **Creator earns** | **160,000** | **฿48,000 cash**, or 192,000 DramaStudio credits |
-| Platform keeps, after VAT, fees and the creator | — | ≈ ฿57,000 |
+| Viewers spend | 480,000 | ≈ ฿130,000 cash (about 10% of credits are bonus) |
+| **Creator earns** (9,600 × 21 + 6,400 × 12) | **278,400** | **฿83,500 cash**, or 334,000 DramaStudio render credits |
+| Platform keeps, after VAT, fees and the creator | | ≈ ฿35,000 (≈ ฿41,000 at 30% discovered) |
 
-**Can it pay for the next season?** From DramaStudio's own price list [H], one
-finished minute costs about 1,170 credits on Seedance 1.5 Pro and about 5,940
-on Veo 3.1 Fast. This series is 60 minutes long:
+**Can it pay for the next season?** From DramaStudio's price list [H], one
+finished minute is about 1,170 credits on Seedance 1.5 Pro and about 5,940
+on Veo 3.1 Fast. This series is 60 minutes.
 
-| Rendered on | Next season costs | Earnings above cover it |
+| Rendered on | Next season | Covered by the 334,000 render credits |
 |---|---:|---:|
-| Seedance 1.5 Pro | ≈ 70,000 credits | **2.7×** |
-| Veo 3.1 Fast | ≈ 356,000 credits | 0.5× |
+| Seedance 1.5 Pro | ≈ 70,000 | **4.8×** |
+| Veo 3.1 Fast | ≈ 356,000 | 0.9× |
 
-A creator on the cheaper model funds the next season and keeps the rest. A
-creator on the premium model needs about twice this audience. That is worth
-saying plainly in the creator help pages.
-
----
-
-## 6. Phase 2: unlimited weekly pass
-
-The incumbents' biggest earner is an all-you-can-watch weekly pass: about
-$15–20 a week at ReelShort and DramaBox [M]. A Thai launch price would be
-around **฿99 a week**. Build it after the per-unlock model works, because it
-needs a payout pool:
-
-- **One third of net pass revenue goes into the creator pool** each week,
-  matching the per-unlock share.
-- The pool is split by **counted views from pass holders**: playback past 30%
-  of the episode or ten seconds, once per viewer per episode per day. DramaTube
-  already counts views exactly this way.
-- Creators see pool earnings as a separate line, so per-unlock income stays
-  easy to read.
+A creator on the cheaper model funds four more seasons; on the premium model,
+about one. Say so on the creator pages.
 
 ---
 
-## 7. What has to be built
+## 8. Phase 2: membership per creator
 
-In order:
+The first subscription is **to a creator, not to the platform** — the shape
+of Patreon and YouTube channel memberships, where YouTube keeps 30% [M].
 
-1. **Wallet and ledger.** An append-only credit ledger with separate bought,
-   bonus and earned balances, and expiry on bonus credits. DramaStudio's
-   ledger is the model to copy.
-2. **Packs and checkout.** Stripe Checkout or a Thai gateway with PromptPay.
-   The webhook grants credits idempotently, as DramaStudio's already does.
-3. **The paywall.** A per-series free-episode count, a per-episode price,
-   unlock records, and a check in the media route so a locked episode's file
-   is refused, not just its page.
-4. **Creator earnings.** Each unlock writes the creator's share to the ledger
-   in the same transaction, with the 14-day hold and an earnings page in
-   Studio.
-5. **Partner application and payouts.** ID check, bank or PromptPay details, a
-   monthly payout run, and a "spend in DramaStudio" button.
-6. **Plus membership.** Then the series pass. Then the weekly pass with its
-   pool.
+- The creator sets a monthly price, ฿49–499.
+- A member watches everything from that creator while the membership runs,
+  including the early window (new episodes are unlock-only for everyone else
+  for 7 days).
+- **Charged from the wallet each month.** That is what makes it payable by
+  PromptPay: the viewer tops up, the membership spends. An empty wallet
+  pauses the membership; nothing is owed.
+- **Creator keeps 70%, flat.** Memberships are fan-driven, so the direct rate
+  applies without attribution.
+- No pool. The creator sees every member by name and the money is a sale.
 
-The single most important rule for all of it: **the media route enforces the
-paywall.** A paywall that only hides the play button is a paywall anyone with
-the file's URL walks through.
+This gives a creator with a loyal audience steady monthly income and gives
+the platform recurring revenue — without a catalogue-wide promise it cannot
+yet keep.
+
+## 9. Phase 3: platform-wide unlimited — only if earned
+
+DramaBox's biggest product is an unlimited pass, and it belongs on the
+roadmap. It should start only when all three hold:
+
+1. **Catalogue over ~100 series**, so "unlimited" means something.
+2. **Data shows bingeing**: a meaningful share of payers unlock more than
+   about 30 episodes a month, the point where a ฿299 pass beats per-episode
+   for them and for the platform [H].
+3. **Creators opt in** per series. Nobody's per-episode sales are converted
+   into pool shares without their say.
+
+When it comes: **30% of net pass revenue to creators** (the YouTube Premium
+rate [M]), split **per member** — each member's share goes only to the
+creators that member actually watched, by episodes watched under the view
+rule DramaTube already enforces (30% of the episode, 2–10 seconds, once per
+viewer per day). A bot has to pay ฿299 to redirect its own ฿82 and nothing
+else, which is why per-member beats a single pool.
+
+---
+
+## 10. What to build, in order
+
+1. **Wallet and ledger** — append-only; bought, bonus and earned balances;
+   bonus expiry. DramaStudio's ledger is the model to copy.
+2. **Top-ups** — PromptPay and cards through Stripe (or a Thai gateway), with
+   an idempotent webhook that grants credits once however often it is
+   retried.
+3. **Pricing and the paywall** — free-episode count, episode price, series
+   price; unlock records; **the media route refuses a locked episode's file**,
+   because a paywall that only hides the play button is no paywall.
+4. **Attribution** — `?ref` on share links, a 30-day cookie, recorded on each
+   unlock, shown to the creator as "direct" and "discovered".
+5. **Earnings** — the creator's share written to the ledger in the same
+   transaction as the unlock; the 14-day hold; an earnings page in Studio;
+   monthly PromptPay payouts; "spend in DramaStudio".
+6. **Membership per creator**, charged from the wallet.
+7. **Platform unlimited**, when §9's conditions are met.
 
 ---
 
 Sources [M]:
-[geekvibesnation: cost to finish a short drama](https://geekvibesnation.com/cost-to-finish-short-drama/) ·
-[qwe.edu.pl: short drama app pricing](https://www.qwe.edu.pl/tutorial/short-drama-app-free/) ·
-[qwe.edu.pl: no-paywall short drama](https://www.qwe.edu.pl/tutorial/no-paywall-short-drama/) ·
-[Stripe: payment gateway fees in Thailand](https://stripe.com/resources/more/payment-gateway-fees-thailand)
+[Stripe: PromptPay](https://stripe.com/payment-method/promptpay) ·
+[Rapyd: PromptPay](https://docs.rapyd.net/en/promptpay.html) ·
+[Airwallex: PromptPay](https://www.airwallex.com/docs/payments/payment-methods/apac/promptpay) ·
+[Gumroad fees](https://checkoutpage.com/blog/gumroad-fees) ·
+[Gumroad fees 2026](https://dodopayments.com/blogs/gumroad-fees-explained) ·
+[Tapas creator share (Wikipedia)](https://wikipedia.com/wiki/Tapastic) ·
+[YouTube Partner Program 2027 changes (9to5Google)](https://9to5google.com/2026/08/10/youtube-premium-lite-expansion-monetization-changes/) ·
+[ReelShort episode pricing](https://geekvibesnation.com/cost-to-finish-short-drama/) ·
+[Pro-rata vs per-member payouts (Curve)](https://www.curveroyaltysystems.com/news/pro-rata-vs-user-centric-streaming-model)

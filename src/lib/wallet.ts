@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import { db, type Tx } from "@/db";
 import { creditLedger, creditLots, purchases, type Purchase } from "@/db/schema";
 import { newId } from "./ids";
@@ -49,17 +49,20 @@ export async function balanceOf(userId: string, now = new Date()): Promise<Balan
   };
 }
 
+/** One lot's contribution to a purchase of episodes. */
+export interface SpentPart {
+  lotId: string;
+  purchaseId: string | null;
+  source: "paid" | "bonus";
+  amount: number;
+}
+
 /**
  * Take credits from a wallet inside the caller's transaction. Locks the lots
  * it reads, so two unlocks racing for the last thirty credits cannot both
- * spend them.
+ * spend them. Returns the lots drawn on, in the order they were spent.
  */
-export async function spendCredits(
-  tx: Tx,
-  userId: string,
-  amount: number,
-  now = new Date(),
-): Promise<{ paidSpent: number; bonusSpent: number }> {
+export async function spendCredits(tx: Tx, userId: string, amount: number, now = new Date()): Promise<SpentPart[]> {
   const lots = await tx
     .select()
     .from(creditLots)
@@ -74,8 +77,7 @@ export async function spendCredits(
   if (available < amount) throw new InsufficientCredits(amount, available);
 
   let left = amount;
-  let paidSpent = 0;
-  let bonusSpent = 0;
+  const parts: SpentPart[] = [];
   for (const lot of lots) {
     if (left === 0) break;
     const take = Math.min(lot.remaining, left);
@@ -83,31 +85,56 @@ export async function spendCredits(
       .update(creditLots)
       .set({ remaining: lot.remaining - take })
       .where(eq(creditLots.id, lot.id));
-    if (lot.source === "bonus") bonusSpent += take;
-    else paidSpent += take;
+    parts.push({ lotId: lot.id, purchaseId: lot.purchaseId, source: lot.source, amount: take });
     left -= take;
   }
-  return { paidSpent, bonusSpent };
+  return parts;
 }
 
-/** Put credits back, as the kinds they were spent as. */
-export async function returnCredits(
-  tx: Tx,
-  userId: string,
-  credits: { paid: number; bonus: number },
-  now = new Date(),
-) {
-  if (credits.paid > 0) {
-    await tx.insert(creditLots).values({ id: newId("lot"), userId, source: "paid", amount: credits.paid, remaining: credits.paid });
+/**
+ * Put spent credits back into the lots they came from, so bonus credits keep
+ * their original expiry. A lot that has expired since, or whose top-up was
+ * reversed, takes nothing back. Returns how many credits came back.
+ */
+export async function restoreCredits(tx: Tx, parts: { lotId: string; amount: number }[], now = new Date()): Promise<number> {
+  let restored = 0;
+  for (const part of parts) {
+    const [row] = await tx
+      .update(creditLots)
+      .set({ remaining: sql`${creditLots.remaining} + ${part.amount}` })
+      .where(
+        and(
+          eq(creditLots.id, part.lotId),
+          live(now),
+          // Spelled out: inside an UPDATE drizzle leaves columns unqualified.
+          sql`not exists (select 1 from "purchases" p where p.id = "credit_lots"."purchase_id" and p.status = 'reversed')`,
+        ),
+      )
+      .returning({ id: creditLots.id });
+    if (row) restored += part.amount;
   }
-  if (credits.bonus > 0) {
-    await tx.insert(creditLots).values({
-      id: newId("lot"),
+  return restored;
+}
+
+/**
+ * Write off bonus credits that have passed their date, once each, so the
+ * ledger keeps adding up to the balance.
+ */
+export async function expireLots(tx: Tx, userId: string, now = new Date()) {
+  const lots = await tx
+    .select()
+    .from(creditLots)
+    .where(and(eq(creditLots.userId, userId), gt(creditLots.remaining, 0), lte(creditLots.expiresAt, now)))
+    .for("update");
+  for (const lot of lots) {
+    await tx.update(creditLots).set({ remaining: 0 }).where(eq(creditLots.id, lot.id));
+    await tx.insert(creditLedger).values({
+      id: newId("led"),
       userId,
-      source: "bonus",
-      amount: credits.bonus,
-      remaining: credits.bonus,
-      expiresAt: new Date(now.getTime() + BONUS_EXPIRY_DAYS * 86_400_000),
+      delta: -lot.remaining,
+      reason: "expiry",
+      purchaseId: lot.purchaseId,
+      externalRef: `expiry:${lot.id}`,
     });
   }
 }
@@ -171,37 +198,6 @@ export async function grantPurchase(purchaseId: string, paidSatang: number): Pro
   });
 }
 
-/**
- * Money that went back — a refund or a card dispute — takes back the credits
- * it bought, as far as they are still unspent. What was already spent stays
- * spent (the creator was paid in good faith) and is recorded on the ledger
- * so a moderator can see it.
- */
-export async function reversePurchase(purchaseId: string, why: "refund" | "dispute") {
-  return db.transaction(async (tx) => {
-    const [purchase] = await tx.select().from(purchases).where(eq(purchases.id, purchaseId)).for("update").limit(1);
-    if (!purchase || purchase.status !== "paid" || !purchase.userId) return { reversed: false, clawedBack: 0, shortfall: 0 };
-    const lots = await tx.select().from(creditLots).where(eq(creditLots.purchaseId, purchase.id)).for("update");
-    let clawedBack = 0;
-    for (const lot of lots) {
-      clawedBack += lot.remaining;
-      await tx.update(creditLots).set({ remaining: 0 }).where(eq(creditLots.id, lot.id));
-    }
-    const shortfall = purchase.credits + purchase.bonusCredits - clawedBack;
-    await tx.update(purchases).set({ status: "reversed" }).where(eq(purchases.id, purchase.id));
-    await tx.insert(creditLedger).values({
-      id: newId("led"),
-      userId: purchase.userId,
-      delta: -clawedBack,
-      reason: "reversal",
-      purchaseId: purchase.id,
-      externalRef: `reversal:${purchase.id}`,
-      note: `${why}${shortfall > 0 ? `; ${shortfall} credits already spent` : ""}`,
-    });
-    return { reversed: true, clawedBack, shortfall };
-  });
-}
-
 /** Whether this account may still buy the once-only first top-up. */
 export async function firstTopUpAvailable(userId: string, tx: Tx | typeof db = db): Promise<boolean> {
   const [row] = await tx
@@ -213,6 +209,7 @@ export async function firstTopUpAvailable(userId: string, tx: Tx | typeof db = d
 }
 
 export async function ledgerOf(userId: string, limit = 50) {
+  await db.transaction((tx) => expireLots(tx, userId));
   return db.select().from(creditLedger).where(eq(creditLedger.userId, userId)).orderBy(desc(creditLedger.createdAt)).limit(limit);
 }
 

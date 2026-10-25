@@ -60,9 +60,13 @@ export function sharePercent(attribution: Attribution, exclusive: boolean): numb
   return SHARE[attribution] + (exclusive ? EXCLUSIVE_BONUS : 0);
 }
 
-/** The creator's credits from one unlock, rounded to the nearest credit. */
+/**
+ * The creator's credits from one unlock, rounded down. Rounding to nearest
+ * would pay 6 credits on a 7-credit episode at 80% — more than the share —
+ * and a creator buying their own cheap episodes could turn that into cash.
+ */
 export function creatorCredits(price: number, attribution: Attribution, exclusive: boolean): number {
-  return Math.round((price * sharePercent(attribution, exclusive)) / 100);
+  return Math.floor((price * sharePercent(attribution, exclusive)) / 100);
 }
 
 /** Whether a series is inside its 90-day exclusive window. */

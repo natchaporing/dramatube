@@ -1,10 +1,12 @@
 import Stripe from "stripe";
 import { and, eq, lt } from "drizzle-orm";
 import { db } from "@/db";
+import { uniqueViolation } from "@/db/errors";
 import { purchases, type Purchase } from "@/db/schema";
 import { newId } from "./ids";
 import { packById } from "./money";
-import { firstTopUpAvailable, grantPurchase, reversePurchase } from "./wallet";
+import { reversePurchase } from "./refunds";
+import { firstTopUpAvailable, grantPurchase } from "./wallet";
 
 /**
  * Taking money: PromptPay through Omise, cards through Stripe — the hybrid.
@@ -118,6 +120,32 @@ export interface Started {
   redirectTo: string;
 }
 
+/**
+ * A first-top-up checkout this viewer started and has not finished. Asks the
+ * provider first, so one paid or expired a moment ago does not count. If it
+ * is still open, the viewer is sent back to it rather than given a second.
+ */
+async function openFirstPurchase(userId: string, origin: string): Promise<Started | null> {
+  const [pending] = await db
+    .select()
+    .from(purchases)
+    .where(and(eq(purchases.userId, userId), eq(purchases.packId, "first"), eq(purchases.status, "pending")))
+    .limit(1);
+  if (!pending) return null;
+  const payPage = `${origin}/wallet/pay/${pending.id}`;
+  try {
+    if ((await settlePurchase(pending)) !== "pending") return null;
+    if (pending.provider === "stripe" && pending.providerRef) {
+      const session = await stripe().checkout.sessions.retrieve(pending.providerRef);
+      if (session.status === "open" && session.url) return { purchase: pending, redirectTo: session.url };
+    }
+  } catch (error) {
+    // The provider did not answer: the pay page asks again.
+    console.error("checking an open first top-up failed", error);
+  }
+  return { purchase: pending, redirectTo: payPage };
+}
+
 export async function startPurchase(opts: {
   userId: string;
   email: string;
@@ -130,20 +158,30 @@ export async function startPurchase(opts: {
   if (!pack) throw new PaymentError("unknown_pack");
   const provider = providers()[opts.method];
   if (!provider) throw new PaymentError("unavailable");
-  if (pack.firstOnly && !(await firstTopUpAvailable(opts.userId))) throw new PaymentError("first_used");
+  if (pack.firstOnly) {
+    const open = await openFirstPurchase(opts.userId, opts.origin);
+    if (open) return open;
+    if (!(await firstTopUpAvailable(opts.userId))) throw new PaymentError("first_used");
+  }
 
   const id = newId("pur");
-  await db.insert(purchases).values({
-    id,
-    userId: opts.userId,
-    packId: pack.id,
-    credits: pack.credits,
-    bonusCredits: pack.bonus,
-    amountSatang: pack.priceSatang,
-    method: opts.method,
-    provider,
-    returnTo: opts.returnTo,
-  });
+  try {
+    await db.insert(purchases).values({
+      id,
+      userId: opts.userId,
+      packId: pack.id,
+      credits: pack.credits,
+      bonusCredits: pack.bonus,
+      amountSatang: pack.priceSatang,
+      method: opts.method,
+      provider,
+      returnTo: opts.returnTo,
+    });
+  } catch (error) {
+    // Two tabs asking for the first top-up at once: the index lets one through.
+    if (uniqueViolation(error) === "purchases_first_pack_idx") throw new PaymentError("first_used");
+    throw error;
+  }
   const payPage = `${opts.origin}/wallet/pay/${id}`;
   const description = `DramaTube credits: ${pack.credits + pack.bonus}`;
 
@@ -172,7 +210,11 @@ export async function startPurchase(opts: {
     }
 
     if (provider === "stripe") {
+      // Thirty minutes, Stripe's shortest, rather than its default day: an
+      // abandoned first-top-up checkout holds the offer until it expires.
+      const expiresAt = new Date(Date.now() + 30 * 60_000);
       const session = await stripe().checkout.sessions.create({
+        expires_at: Math.floor(expiresAt.getTime() / 1000),
         mode: "payment",
         payment_method_types: [opts.method === "promptpay" ? "promptpay" : "card"],
         line_items: [
@@ -189,7 +231,7 @@ export async function startPurchase(opts: {
       });
       const [updated] = await db
         .update(purchases)
-        .set({ providerRef: session.id })
+        .set({ providerRef: session.id, expiresAt })
         .where(eq(purchases.id, id))
         .returning();
       return { purchase: updated, redirectTo: session.url ?? payPage };
@@ -213,6 +255,23 @@ export async function startPurchase(opts: {
 /* ---------------------------- Settling -------------------------------- */
 
 /**
+ * Grant a payment the provider confirmed, and say what the purchase is now.
+ * Less money than the pack costs is not a sale: the purchase is marked failed
+ * for a person to look at, and no credits are granted.
+ */
+async function granted(purchase: Purchase, paidSatang: number): Promise<Purchase["status"]> {
+  const result = await grantPurchase(purchase.id, paidSatang);
+  if (result === "granted") return "paid";
+  if (result === "mismatch") {
+    console.error(`purchase ${purchase.id}: paid ${paidSatang} satang of ${purchase.amountSatang}`);
+    await db.update(purchases).set({ status: "failed" }).where(and(eq(purchases.id, purchase.id), eq(purchases.status, "pending")));
+    return "failed";
+  }
+  const [row] = await db.select({ status: purchases.status }).from(purchases).where(eq(purchases.id, purchase.id)).limit(1);
+  return row?.status ?? purchase.status;
+}
+
+/**
  * Ask the provider what happened to a purchase and act on it. Safe to call
  * any number of times from anywhere: the grant happens once.
  */
@@ -223,8 +282,7 @@ export async function settlePurchase(purchase: Purchase): Promise<Purchase["stat
   if (purchase.provider === "omise") {
     const charge = await omise<OmiseCharge>(`/charges/${encodeURIComponent(purchase.providerRef)}`);
     if (charge.status === "successful" && charge.paid && charge.currency.toLowerCase() === "thb") {
-      await grantPurchase(purchase.id, charge.amount);
-      return "paid";
+      return granted(purchase, charge.amount);
     }
     if (charge.status === "failed" || charge.status === "expired") {
       await db.update(purchases).set({ status: charge.status }).where(and(eq(purchases.id, purchase.id), eq(purchases.status, "pending")));
@@ -236,8 +294,7 @@ export async function settlePurchase(purchase: Purchase): Promise<Purchase["stat
   if (purchase.provider === "stripe") {
     const session = await stripe().checkout.sessions.retrieve(purchase.providerRef);
     if (session.payment_status === "paid" && session.currency === "thb") {
-      await grantPurchase(purchase.id, session.amount_total ?? 0);
-      return "paid";
+      return granted(purchase, session.amount_total ?? 0);
     }
     if (session.status === "expired") {
       await db.update(purchases).set({ status: "expired" }).where(and(eq(purchases.id, purchase.id), eq(purchases.status, "pending")));
@@ -257,7 +314,7 @@ export async function settlePurchase(purchase: Purchase): Promise<Purchase["stat
 /** The stand-in provider's "the customer paid" button. Refuses unless enabled. */
 export async function simulateDevPayment(purchase: Purchase) {
   if (!config.devPayments || purchase.provider !== "dev") throw new PaymentError("unavailable");
-  return grantPurchase(purchase.id, purchase.amountSatang);
+  return granted(purchase, purchase.amountSatang);
 }
 
 export async function purchaseByProviderRef(provider: Provider, ref: string) {

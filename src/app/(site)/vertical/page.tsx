@@ -17,7 +17,7 @@ export default async function VerticalPage({ searchParams }: PageProps<"/vertica
   const { user, t, locale, fmt } = await pageContext();
   // Locked episodes stay out of the swipe feed: it is the free sampler. A
   // tall paid episode is reached from its series, where the paywall is.
-  const list = (await withLocks(user?.id ?? null, await listVertical({ leadId: lead, limit: 40 }))).filter(
+  const list = (await withLocks(user ?? null, await listVertical({ leadId: lead, limit: 40 }))).filter(
     (card) => card.lockPrice === undefined,
   );
   if (list.length === 0) return <EmptyState title={t("vertical.empty")} />;

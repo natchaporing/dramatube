@@ -24,6 +24,8 @@ export interface PricingValues {
   seriesPricePercent: number;
   /** ISO date the 90-day exclusive window ends, if inside it. */
   exclusiveUntil: string | null;
+  /** Not exclusive yet, and still inside the series' first 90 days. */
+  exclusiveOpen: boolean;
 }
 
 export function PricingForm({
@@ -43,6 +45,7 @@ export function PricingForm({
   const [exclusive, setExclusive] = useState(Boolean(initial.exclusiveUntil));
   const [copied, setCopied] = useState(false);
   const locked = Boolean(initial.exclusiveUntil);
+  const closed = !locked && !initial.exclusiveOpen;
 
   return (
     <form onSubmit={keepFields(action)} className="space-y-4 rounded-lg border border-line bg-surface p-4">
@@ -63,7 +66,17 @@ export function PricingForm({
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block sm:col-span-2">
+          <span className="label text-xs">{t("price.episodePrice")}</span>
+          <select name="episodePrice" value={price} onChange={(event) => setPrice(Number(event.target.value))} className="field">
+            {EPISODE_PRICES.map((credits) => (
+              <option key={credits} value={credits}>
+                {t("price.creditsOption", { count: credits, baht: satangToBaht(Math.round((credits * 100) / 3)) })}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="block">
           <span className="label text-xs">{t("price.freeEpisodes")}</span>
           <input
@@ -76,16 +89,6 @@ export function PricingForm({
             data-testid="free-episodes"
           />
           <span className="hint block">{t("price.freeHint")}</span>
-        </label>
-        <label className="block">
-          <span className="label text-xs">{t("price.episodePrice")}</span>
-          <select name="episodePrice" value={price} onChange={(event) => setPrice(Number(event.target.value))} className="field">
-            {EPISODE_PRICES.map((credits) => (
-              <option key={credits} value={credits}>
-                {t("price.creditsOption", { count: credits, baht: satangToBaht(Math.round((credits * 100) / 3)) })}
-              </option>
-            ))}
-          </select>
         </label>
         <label className="block">
           <span className="label text-xs">{t("price.seriesPercent")}</span>
@@ -110,7 +113,7 @@ export function PricingForm({
           type="checkbox"
           name="exclusive"
           checked={exclusive}
-          disabled={locked}
+          disabled={locked || closed}
           onChange={(event) => setExclusive(event.target.checked)}
           className="mt-1"
         />
@@ -121,6 +124,7 @@ export function PricingForm({
               {t("price.exclusiveUntil", { date: new Date(initial.exclusiveUntil).toLocaleDateString(locale) })}
             </span>
           )}
+          {closed && <span className="block text-xs text-muted">{t("price.exclusiveClosed")}</span>}
         </span>
       </label>
       {/* A disabled checkbox does not submit; keep the commitment while it runs. */}

@@ -6,7 +6,7 @@ import { VideoCard } from "@/components/video-card";
 import { signOutAction } from "@/app/actions/auth";
 import { mediaUrl } from "@/lib/storage";
 import { pageContext } from "@/lib/viewer";
-import { listHistory, listLiked } from "@/lib/videos";
+import { listHistory, listLiked, withLocks } from "@/lib/videos";
 
 export const metadata = { title: "You" };
 
@@ -14,7 +14,10 @@ export const metadata = { title: "You" };
 export default async function YouPage() {
   const { user, admin, t, fmt } = await pageContext();
   if (!user) return <SignInWall title={t("nav.signInPrompt")} next="/feed/you" />;
-  const [history, liked] = await Promise.all([listHistory(user.id, 12), listLiked(user.id, 12)]);
+  const [history, liked] = await Promise.all([
+    listHistory(user.id, 12).then((list) => withLocks(user, list)),
+    listLiked(user.id, 12).then((list) => withLocks(user, list)),
+  ]);
 
   const shelf = (title: string, href: string, list: typeof history, empty: string) => (
     <section>

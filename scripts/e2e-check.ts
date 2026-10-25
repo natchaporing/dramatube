@@ -363,6 +363,19 @@ async function main() {
       check(rows.some((row) => row.includes("Your link")) && rows.filter((row) => row.includes("DramaTube")).length === 3, "each sale says where the viewer came from");
       check(await c.isVisible("text=Held until"), "new earnings are held for the refund window");
 
+      // A moderator reviewing a paid episode is not asked to pay for it.
+      await moneyAdmin.goto(`${BASE}/watch/${ep4}`);
+      check(!(await moneyAdmin.isVisible('[data-testid="paywall"]')) && (await moneyAdmin.isVisible("video")), "a moderator watches a paid episode without buying it");
+
+      // A ?ref= link reached from DramaTube's own pages is not the creator's own link.
+      const refCalls: string[] = [];
+      v.on("request", (request) => {
+        if (request.url().endsWith("/api/ref")) refCalls.push(request.url());
+      });
+      await v.goto(`${BASE}/@e2ec${run}?ref=e2ec${run}`, { referer: `${BASE}/watch/${ep3}` });
+      await v.waitForLoadState("networkidle");
+      check(refCalls.length === 0, "a ?ref= link followed from inside DramaTube does not make sales direct");
+
       // The creator deletes a sold episode: its buyer gets the credits back.
       const gone = await fetch(`${BASE}/api/v1/videos/${ep5}`, { method: "DELETE", headers: auth });
       paidEpisodes.splice(paidEpisodes.indexOf(ep5), 1);
@@ -370,6 +383,24 @@ async function main() {
       check(gone.status === 204 && (await v.textContent('[data-testid="wallet-balance"]'))?.trim() === "39", "a deleted episode refunds its buyers (18 + 21)");
       await c.goto(`${BASE}/studio/earnings`);
       check(await c.isVisible("text=Refunded"), "…and reverses the creator's earning");
+
+      // The price changes while a viewer has the paywall open: they are not charged the new price unseen.
+      await w.goto(`${BASE}/watch/${ep4}`);
+      await w.waitForSelector('[data-testid="unlock-episode"]:has-text("30 credits")');
+      await c.goto(`${BASE}/studio/series`);
+      const pricing = c
+        .locator("form", { has: c.locator(`input[name="seriesId"][value="${series.id}"]`) })
+        .filter({ has: c.locator('[data-testid="on-sale"]') });
+      await pricing.locator('select[name="episodePrice"]').selectOption("35");
+      await pricing.locator('[data-testid="save-pricing"]').click();
+      await pricing.locator("text=Saved").waitFor();
+      await w.click('[data-testid="unlock-episode"]');
+      await w.waitForSelector("text=The price just changed.");
+      check((await w.textContent('[data-testid="credits-chip"]'))?.trim() === "285", "a price changed under the viewer is refused, not charged");
+      await w.waitForSelector('[data-testid="unlock-episode"]:has-text("35 credits")');
+      await w.click('[data-testid="unlock-episode"]');
+      await w.waitForSelector("video", { timeout: 15_000 });
+      check((await w.textContent('[data-testid="credits-chip"]'))?.trim() === "250", "…and the new price, once shown, is what is charged");
       await third.close();
     }
     await moneyAdminContext.close();

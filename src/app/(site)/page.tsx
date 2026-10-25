@@ -4,7 +4,7 @@ import { ChevronRight, Smartphone } from "lucide-react";
 import { EmptyState, VerticalCard, VideoGrid } from "@/components/video-card";
 import { CATEGORIES, isCategory } from "@/lib/catalog";
 import { pageContext } from "@/lib/viewer";
-import { listFeed, type FeedSort } from "@/lib/videos";
+import { listFeed, withLocks, type FeedSort } from "@/lib/videos";
 
 const PAGE = 48;
 const SORTS: FeedSort[] = ["trending", "latest", "popular"];
@@ -14,11 +14,11 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const category = isCategory(params.c) ? params.c : null;
   const sort: FeedSort = SORTS.includes(params.sort as FeedSort) ? (params.sort as FeedSort) : "trending";
   const page = Math.max(1, Math.min(50, Number(params.page) || 1));
-  const { t, fmt } = await pageContext();
+  const { user, t, fmt } = await pageContext();
 
   const [videos, vertical] = await Promise.all([
-    listFeed({ category, sort, limit: PAGE * page + 1, shape: category ? "any" : "horizontal" }),
-    category || page > 1 ? Promise.resolve([]) : listFeed({ shape: "vertical", limit: 12 }),
+    listFeed({ category, sort, limit: PAGE * page + 1, shape: category ? "any" : "horizontal" }).then((list) => withLocks(user, list)),
+    category || page > 1 ? Promise.resolve([]) : listFeed({ shape: "vertical", limit: 12 }).then((list) => withLocks(user, list)),
   ]);
   const hasMore = videos.length > PAGE * page;
   const shown = videos.slice(0, PAGE * page);

@@ -67,9 +67,9 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
     user && !own ? isSubscribed(user.id, video.channelId) : Promise.resolve(false),
     user ? resumePosition(user.id, video.id) : Promise.resolve(0),
     video.seriesId ? seriesEpisodes(video.seriesId, own) : Promise.resolve([]),
-    lockFor(user?.id ?? null, video.id),
+    lockFor(user ?? null, video.id),
   ]);
-  const [episodes, upNextItems] = await Promise.all([withLocks(user?.id ?? null, rawEpisodes), withLocks(user?.id ?? null, next.items)]);
+  const [episodes, upNextItems] = await Promise.all([withLocks(user ?? null, rawEpisodes), withLocks(user ?? null, next.items)]);
   const [rest, balance] =
     lock.locked && video.seriesId
       ? await Promise.all([restOfSeries(user?.id ?? null, video.seriesId), user ? balanceOf(user.id) : Promise.resolve(null)])
@@ -100,7 +100,7 @@ export default async function WatchPage({ params, searchParams }: PageProps<"/wa
             episodeNumber={video.episodeNumber ?? 0}
             freeEpisodes={lock.sale.freeEpisodes}
             price={lock.price}
-            rest={rest ? { count: rest.remaining.length, total: rest.total, fullPrice: rest.fullPrice } : null}
+            rest={rest ? { ids: rest.remaining.map((episode) => episode.id), total: rest.total, fullPrice: rest.fullPrice } : null}
             balance={balance ? balance.total : null}
             poster={video.thumbnailUrl}
             width={video.width}

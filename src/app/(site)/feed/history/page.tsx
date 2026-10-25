@@ -2,14 +2,14 @@ import { SignInWall } from "@/components/sign-in-wall";
 import { EmptyState, VideoRow } from "@/components/video-card";
 import { clearHistoryAction } from "@/app/actions/social";
 import { pageContext } from "@/lib/viewer";
-import { listHistory } from "@/lib/videos";
+import { listHistory, withLocks } from "@/lib/videos";
 
 export const metadata = { title: "History" };
 
 export default async function HistoryPage() {
   const { user, t, fmt } = await pageContext();
   if (!user) return <SignInWall title={t("feed.historyEmpty")} next="/feed/history" />;
-  const videos = await listHistory(user.id);
+  const videos = await withLocks(user, await listHistory(user.id));
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6">
       <div className="mb-6 flex items-center justify-between gap-4">

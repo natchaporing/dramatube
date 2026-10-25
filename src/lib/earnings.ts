@@ -1,9 +1,8 @@
-import { and, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { creditLedger, earnings, payouts, sellers, unlocks, users, videos } from "@/db/schema";
+import { earnings, payouts, sellers, users, videos } from "@/db/schema";
 import { newId } from "./ids";
 import { MIN_PAYOUT_CREDITS, PAYOUT_SATANG_PER_CREDIT, SELLER_MIN_AGE, ageOn, normalizePromptPay } from "./money";
-import { returnCredits } from "./wallet";
 
 /**
  * The creator's side: what they have earned, what they can take out, and
@@ -20,8 +19,8 @@ export async function earningsSummary(creatorId: string, now = new Date()) {
       held: sql<number>`coalesce(sum(${earnings.credits}) filter (where ${earnings.status} = 'open' and ${earnings.payoutId} is null and ${earnings.availableAt} > ${at}), 0)::int`,
       requested: sql<number>`coalesce(sum(${earnings.credits}) filter (where ${earnings.status} = 'open' and ${earnings.payoutId} is not null), 0)::int`,
       paid: sql<number>`coalesce(sum(${earnings.credits}) filter (where ${earnings.status} = 'paid'), 0)::int`,
-      direct: sql<number>`count(*) filter (where ${earnings.attribution} = 'direct' and ${earnings.status} <> 'reversed')::int`,
-      discovered: sql<number>`count(*) filter (where ${earnings.attribution} = 'discovered' and ${earnings.status} <> 'reversed')::int`,
+      direct: sql<number>`count(*) filter (where ${earnings.kind} = 'sale' and ${earnings.attribution} = 'direct' and ${earnings.status} <> 'reversed')::int`,
+      discovered: sql<number>`count(*) filter (where ${earnings.kind} = 'sale' and ${earnings.attribution} = 'discovered' and ${earnings.status} <> 'reversed')::int`,
     })
     .from(earnings)
     .where(eq(earnings.creatorId, creatorId));
@@ -32,6 +31,7 @@ export async function recentSales(creatorId: string, limit = 50) {
   return db
     .select({
       id: earnings.id,
+      kind: earnings.kind,
       credits: earnings.credits,
       attribution: earnings.attribution,
       availableAt: earnings.availableAt,
@@ -55,7 +55,7 @@ export async function payoutsOf(creatorId: string) {
 /* ---------------------------- Sellers ---------------------------------- */
 
 export class SellerError extends Error {
-  constructor(public readonly code: "name" | "promptpay" | "birth" | "age" | "not_seller" | "below_minimum" | "pending_payout") {
+  constructor(public readonly code: "name" | "promptpay" | "birth" | "age" | "approved" | "not_seller" | "below_minimum" | "pending_payout") {
     super(code);
   }
 }
@@ -65,8 +65,14 @@ export async function sellerOf(userId: string) {
   return row ?? null;
 }
 
-/** Apply, or re-apply after a rejection or to correct details. Always back to pending. */
+/**
+ * Apply, or re-apply after a rejection or to correct details while pending.
+ * An approved seller cannot: going back to pending would take every series
+ * they sell off sale until a moderator got to it. Changing the payout
+ * account of an approved seller goes through support for now.
+ */
 export async function applyToSell(userId: string, input: { legalName: string; promptpayId: string; birthDate: string }) {
+  if ((await sellerOf(userId))?.status === "approved") throw new SellerError("approved");
   const legalName = input.legalName.replace(/\s+/g, " ").trim().slice(0, 120);
   if (legalName.length < 3 || !legalName.includes(" ")) throw new SellerError("name");
   const promptpayId = normalizePromptPay(input.promptpayId);
@@ -168,51 +174,5 @@ export async function rejectPayout(payoutId: string, note: string) {
       .returning({ id: payouts.id });
     if (!row) return;
     await tx.update(earnings).set({ payoutId: null }).where(eq(earnings.payoutId, payoutId));
-  });
-}
-
-/* ---------------------------- Refunds ---------------------------------- */
-
-/**
- * A paid episode stopped existing for its buyers — a moderator removed it,
- * or its creator deleted it. Everyone whose purchase is still inside the
- * creator's earnings window (open, not yet claimed by a payout) gets their
- * credits back, and the creator's matching earnings are reversed. Purchases
- * whose earnings were already paid out are not clawed back from the creator.
- */
-export async function refundVideoUnlocks(videoId: string): Promise<number> {
-  return db.transaction(async (tx) => {
-    const rows = await tx
-      .select({ unlock: unlocks, earningId: earnings.id })
-      .from(unlocks)
-      .innerJoin(earnings, eq(earnings.unlockId, unlocks.id))
-      .where(
-        and(
-          eq(unlocks.videoId, videoId),
-          isNull(unlocks.refundedAt),
-          eq(earnings.status, "open"),
-          isNull(earnings.payoutId),
-          gt(unlocks.price, 0),
-        ),
-      )
-      .for("update");
-    const now = new Date();
-    for (const { unlock, earningId } of rows) {
-      await returnCredits(tx, unlock.userId, { paid: unlock.paidSpent, bonus: unlock.bonusSpent }, now);
-      // The unlock goes; the ledger line below is the record. Deleting rather
-      // than marking it means the episode can be bought again if it is restored.
-      await tx.delete(unlocks).where(eq(unlocks.id, unlock.id));
-      await tx.update(earnings).set({ status: "reversed" }).where(eq(earnings.id, earningId));
-      await tx.insert(creditLedger).values({
-        id: newId("led"),
-        userId: unlock.userId,
-        delta: unlock.price,
-        reason: "refund",
-        unlockId: unlock.id,
-        externalRef: `refund:${unlock.id}`,
-        note: "episode no longer available",
-      });
-    }
-    return rows.length;
   });
 }

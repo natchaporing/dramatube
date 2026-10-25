@@ -47,15 +47,15 @@ async function handle(request: Request, ctx: RouteContext<"/api/media/[...key]">
     const who = async () => (viewer === undefined ? (viewer = await currentUser()) : viewer);
     if (!open && !canWatch(video, await who())) return new Response("Not found", { status: 404 });
 
-    // A paid episode's file goes only to its creator and the people who
-    // bought it. The thumbnail stays public: it is the shop window.
+    // A paid episode's file goes only to its creator, the people who bought
+    // it and moderators. The thumbnail stays public: it is the shop window.
     let paid = false;
     if (kind === "videos" && video.seriesId) {
       const sale = await saleOf(video.seriesId);
       paid = isPaidEpisode(sale, video.episodeNumber);
       if (paid) {
         const user = await who();
-        const locked = (await locksFor(user?.id ?? null, [video])).size > 0;
+        const locked = (await locksFor(user ?? null, [video])).size > 0;
         if (locked) return new Response("This episode is locked", { status: 403 });
       }
     }

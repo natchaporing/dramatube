@@ -5,7 +5,7 @@ import { Sparkles } from "lucide-react";
 import { EmptyState, VideoRow } from "@/components/video-card";
 import { CATEGORIES, canonicalModel, isCategory } from "@/lib/catalog";
 import { pageContext } from "@/lib/viewer";
-import { searchVideos } from "@/lib/videos";
+import { searchVideos, withLocks } from "@/lib/videos";
 
 type Sort = "relevance" | "latest" | "views";
 const SORTS: Sort[] = ["relevance", "latest", "views"];
@@ -26,12 +26,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const model = canonicalModel(one(params.model));
   const category = isCategory(params.c) ? params.c : null;
   const sort: Sort = SORTS.includes(params.sort as Sort) ? (params.sort as Sort) : "relevance";
-  const { t, fmt } = await pageContext();
+  const { user, t, fmt } = await pageContext();
 
   if (!q && !model && !category) {
     return <EmptyState title={t("search.prompt")} />;
   }
-  const results = await searchVideos({ query: q, model, category, sort });
+  const results = await withLocks(user, await searchVideos({ query: q, model, category, sort }));
 
   const href = (next: { c?: string | null; sort?: Sort }) => {
     const query = new URLSearchParams();

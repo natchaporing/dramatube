@@ -1,6 +1,7 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, min, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { sellers, series, users } from "@/db/schema";
+import { uniqueViolation } from "@/db/errors";
+import { sellers, series, users, videos } from "@/db/schema";
 import { LIMITS } from "./catalog";
 import {
   FREE_EPISODES_MAX,
@@ -13,7 +14,7 @@ import {
 import { handleProblem, normalizeHandle } from "./handles";
 import { newId, newObjectName } from "./ids";
 import { checkImage, type ImageInput } from "./publish";
-import { deleteObject, putBuffer } from "./storage";
+import { deleteObject, putBuffer, videosArePrivate } from "./storage";
 
 /** A creator's own things that are not videos: series and the channel itself. */
 
@@ -90,7 +91,7 @@ export async function updateChannel(
       .set({ name, handle, bio: input.bio.trim().slice(0, LIMITS.bio), avatarKey, bannerKey })
       .where(eq(users.id, userId));
   } catch (error) {
-    if ((error as { code?: string }).code === "23505") throw new StudioError("handle_taken");
+    if (uniqueViolation(error) !== null) throw new StudioError("handle_taken");
     throw error;
   }
   if (avatarKey !== user.avatarKey) await deleteObject(user.avatarKey).catch(() => {});
@@ -106,10 +107,20 @@ export interface PricingInput {
   exclusive: boolean;
 }
 
+/** When a series' first episode came out, which is when its exclusive window opens. */
+async function firstPublished(seriesId: string): Promise<Date | null> {
+  const [row] = await db.select({ at: min(videos.publishedAt) }).from(videos).where(eq(videos.seriesId, seriesId));
+  return row?.at ? new Date(row.at) : null;
+}
+
 /**
  * What a series sells for. Only an approved seller can put a series on sale;
- * anyone can set the numbers ahead of approval. Exclusivity is a 90-day
- * commitment: once switched on it cannot be switched off inside the window.
+ * anyone can set the numbers ahead of approval.
+ *
+ * Exclusivity covers a series' first 90 days, counted from its first
+ * episode (or from now, before there is one). It can be switched on any time
+ * inside that window, cannot be switched off before the window ends, and
+ * cannot be started again afterwards.
  */
 export async function updateSeriesPricing(channelId: string, seriesId: string, input: PricingInput) {
   const [row] = await db
@@ -126,10 +137,14 @@ export async function updateSeriesPricing(channelId: string, seriesId: string, i
   if (input.onSale) {
     const [seller] = await db.select({ status: sellers.status }).from(sellers).where(eq(sellers.userId, channelId)).limit(1);
     if (seller?.status !== "approved") throw new StudioError("not_seller");
+    if (!videosArePrivate()) throw new StudioError("storage_public");
   }
   let exclusiveSince = row.exclusiveSince;
-  if (input.exclusive && !isExclusive(exclusiveSince)) exclusiveSince = new Date();
-  if (!input.exclusive && !isExclusive(exclusiveSince)) exclusiveSince = null;
+  if (input.exclusive && !exclusiveSince) {
+    const start = (await firstPublished(seriesId)) ?? new Date();
+    if (!isExclusive(start)) throw new StudioError("exclusive_closed");
+    exclusiveSince = start;
+  }
   await db
     .update(series)
     .set({ onSale: input.onSale, freeEpisodes, episodePrice: input.episodePrice, seriesPricePercent: percent, exclusiveSince, updatedAt: new Date() })
@@ -146,9 +161,18 @@ export async function ownSeriesPricing(channelId: string) {
       episodePrice: series.episodePrice,
       seriesPricePercent: series.seriesPricePercent,
       exclusiveSince: series.exclusiveSince,
+      firstPublished: min(videos.publishedAt),
     })
     .from(series)
-    .where(eq(series.channelId, channelId));
-  return new Map(rows.map((row) => [row.id, row]));
+    .leftJoin(videos, eq(videos.seriesId, series.id))
+    .where(eq(series.channelId, channelId))
+    .groupBy(series.id);
+  return new Map(
+    rows.map(({ firstPublished: first, ...row }) => [
+      row.id,
+      // Whether exclusivity can still be switched on.
+      { ...row, exclusiveOpen: !row.exclusiveSince && (!first || isExclusive(new Date(first))) },
+    ]),
+  );
 }
 

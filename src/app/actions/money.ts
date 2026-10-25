@@ -16,7 +16,7 @@ import { balanceOf } from "@/lib/wallet";
 
 export type UnlockResult =
   | { ok: true }
-  | { error: "signin" | "not_found" | "not_locked" | "nothing_left" }
+  | { error: "signin" | "not_found" | "not_locked" | "nothing_left" | "price_changed" }
   | { error: "insufficient"; needed: number; balance: number };
 
 async function refs() {
@@ -40,14 +40,17 @@ async function unlockWith(run: (userId: string) => Promise<unknown>, path: strin
   return { ok: true };
 }
 
-export async function unlockEpisodeAction(videoId: string): Promise<UnlockResult> {
+/** `price` is what the button said; the sale goes through only at that price. */
+export async function unlockEpisodeAction(videoId: string, price: number): Promise<UnlockResult> {
   const map = await refs();
-  return unlockWith((userId) => unlockEpisode(userId, String(videoId), map), `/watch/${videoId}`);
+  return unlockWith((userId) => unlockEpisode(userId, String(videoId), map, Number(price)), `/watch/${videoId}`);
 }
 
-export async function unlockRestAction(seriesId: string, videoId: string): Promise<UnlockResult> {
+/** `expected` is what the button offered: these episodes, for this total. */
+export async function unlockRestAction(seriesId: string, videoId: string, expected: { ids: string[]; total: number }): Promise<UnlockResult> {
   const map = await refs();
-  return unlockWith((userId) => unlockRest(userId, String(seriesId), map), `/watch/${videoId}`);
+  const ids = Array.isArray(expected?.ids) ? expected.ids.map(String).slice(0, 500) : [];
+  return unlockWith((userId) => unlockRest(userId, String(seriesId), map, { ids, total: Number(expected?.total) }), `/watch/${videoId}`);
 }
 
 export type MoneyFormState = { error?: string; ok?: number } | null;

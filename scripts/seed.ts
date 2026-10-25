@@ -379,7 +379,7 @@ async function main() {
       .from(videos)
       .where(and(eq(videos.seriesId, seriesIds.bkk), eq(videos.episodeNumber, 3)))
       .limit(1);
-    if (bkk3) await unlockEpisode(ids.director, bkk3.id, withReferral({}, ids.neon));
+    if (bkk3) await unlockEpisode(ids.director, bkk3.id, withReferral({}, ids.neon), 30);
 
     console.log(`\nSeeded ${CHANNELS.length} channels and ${published.length} videos.`);
     console.log("Sign in as director@example.com / dramatube");

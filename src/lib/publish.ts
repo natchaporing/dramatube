@@ -29,7 +29,7 @@ import {
   sniffVideo,
   type AcceptedVideoType,
 } from "./media";
-import { refundVideoUnlocks } from "./earnings";
+import { refundVideoUnlocks } from "./refunds";
 import { deleteObject, putBuffer, putFile, uploadDir } from "./storage";
 
 /**
@@ -378,24 +378,31 @@ export async function updateVideo(
     await putBuffer(thumbnailKey, image.data, image.type);
   }
 
-  const [updated] = await db
-    .update(videos)
-    .set({
-      title: input.title,
-      description: input.description,
-      visibility: input.visibility,
-      category: input.category,
-      tags: input.tags,
-      aiUsage: input.aiUsage,
-      aiModels: input.aiModels,
-      prompt: input.prompt,
-      seriesId: placement.seriesId,
-      episodeNumber: placement.episodeNumber,
-      thumbnailKey,
-      updatedAt: new Date(),
-    })
-    .where(eq(videos.id, video.id))
-    .returning();
+  const [updated] = await db.transaction(async (tx) => {
+    // Going private takes a sold episode away from its buyers, so they get their credits back.
+    if (input.visibility === "private" && video.visibility !== "private") {
+      await tx.select({ id: videos.id }).from(videos).where(eq(videos.id, video.id)).for("update");
+      await refundVideoUnlocks(tx, video.id);
+    }
+    return tx
+      .update(videos)
+      .set({
+        title: input.title,
+        description: input.description,
+        visibility: input.visibility,
+        category: input.category,
+        tags: input.tags,
+        aiUsage: input.aiUsage,
+        aiModels: input.aiModels,
+        prompt: input.prompt,
+        seriesId: placement.seriesId,
+        episodeNumber: placement.episodeNumber,
+        thumbnailKey,
+        updatedAt: new Date(),
+      })
+      .where(eq(videos.id, video.id))
+      .returning();
+  });
 
   if (image && video.thumbnailKey) await deleteObject(video.thumbnailKey).catch(() => {});
   return updated;
@@ -404,9 +411,13 @@ export async function updateVideo(
 /** Rows first, then files: a file without a row is invisible, a row without a file is a broken page. */
 export async function deleteVideo(userId: string, videoId: string, asAdmin = false): Promise<void> {
   const video = await ownedVideo(userId, videoId, asAdmin);
-  // Buyers inside the refund window get their credits back before the episode goes.
-  await refundVideoUnlocks(video.id);
-  await db.delete(videos).where(eq(videos.id, video.id));
+  await db.transaction(async (tx) => {
+    // Locked first, so no unlock can land between the refunds and the delete.
+    await tx.select({ id: videos.id }).from(videos).where(eq(videos.id, video.id)).for("update");
+    // Everyone who paid for it gets their credits back before it goes.
+    await refundVideoUnlocks(tx, video.id);
+    await tx.delete(videos).where(eq(videos.id, video.id));
+  });
   await deleteObject(video.videoKey).catch(() => {});
   await deleteObject(video.thumbnailKey).catch(() => {});
 }

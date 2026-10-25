@@ -33,7 +33,7 @@ export function Paywall({
   episodeNumber: number;
   freeEpisodes: number;
   price: number;
-  rest: { count: number; total: number; fullPrice: number } | null;
+  rest: { ids: string[]; total: number; fullPrice: number } | null;
   /** Null when signed out. */
   balance: number | null;
   poster: string | null;
@@ -51,11 +51,12 @@ export function Paywall({
     start(async () => {
       const outcome = await action();
       setResult(outcome);
-      if ("ok" in outcome || outcome.error === "not_locked") router.refresh();
+      // Bought, free after all, or the offer changed under the viewer: show what is true now.
+      if ("ok" in outcome || outcome.error === "not_locked" || outcome.error === "price_changed") router.refresh();
     });
 
   const topUp = `/wallet?return=${encodeURIComponent(here)}`;
-  const showRest = rest && rest.count > 1;
+  const showRest = rest && rest.ids.length > 1;
   const savePercent = showRest ? Math.round(100 - (rest.total / rest.fullPrice) * 100) : 0;
   const needed = result && "error" in result && result.error === "insufficient" ? result.needed - result.balance : 0;
 
@@ -70,7 +71,7 @@ export function Paywall({
           <Lock size={22} />
         </span>
         <h2 className="text-lg font-bold text-white sm:text-xl">{t("paywall.locked", { number: episodeNumber })}</h2>
-        <p className="text-sm text-white/70">{t("paywall.free", { count: freeEpisodes })}</p>
+        <p className="text-sm text-white/70">{freeEpisodes === 1 ? t("paywall.freeOne") : t("paywall.free", { count: freeEpisodes })}</p>
 
         {balance === null ? (
           <Link href={`/login?next=${encodeURIComponent(here)}`} className="btn btn-primary mt-2">
@@ -78,13 +79,13 @@ export function Paywall({
           </Link>
         ) : (
           <div className="mt-2 flex w-full max-w-sm flex-col gap-2">
-            <button className="btn btn-primary py-2.5" disabled={pending} onClick={() => run(() => unlockEpisodeAction(videoId))} data-testid="unlock-episode">
+            <button className="btn btn-primary py-2.5" disabled={pending} onClick={() => run(() => unlockEpisodeAction(videoId, price))} data-testid="unlock-episode">
               {pending ? <LoaderCircle size={16} className="animate-spin" /> : <Coins size={16} />}
               {t("paywall.unlock", { price })}
             </button>
             {showRest && (
-              <button className="btn btn-light py-2.5" disabled={pending} onClick={() => run(() => unlockRestAction(seriesId, videoId))} data-testid="unlock-rest">
-                {t("paywall.unlockRest", { count: rest.count, price: rest.total })}
+              <button className="btn btn-light py-2.5" disabled={pending} onClick={() => run(() => unlockRestAction(seriesId, videoId, { ids: rest.ids, total: rest.total }))} data-testid="unlock-rest">
+                {t("paywall.unlockRest", { count: rest.ids.length, price: rest.total })}
                 {savePercent > 0 && <span className="rounded bg-brand px-1.5 py-0.5 text-[11px] font-semibold text-white">{t("paywall.save", { percent: savePercent })}</span>}
               </button>
             )}

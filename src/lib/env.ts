@@ -51,6 +51,10 @@ export const env = {
   get s3PublicBaseUrl() {
     return read("S3_PUBLIC_BASE_URL")?.replace(/\/$/, "");
   },
+  /** With a public base URL: the operator's word that `videos/` itself is not publicly readable. */
+  get s3VideosPrivate() {
+    return read("S3_VIDEOS_PRIVATE") === "1";
+  },
   get uploadMaxBytes() {
     const mb = Number(read("UPLOAD_MAX_MB") ?? "2048");
     return (Number.isFinite(mb) && mb > 0 ? mb : 2048) * 1024 * 1024;

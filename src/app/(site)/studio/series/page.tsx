@@ -55,6 +55,7 @@ export default async function StudioSeriesPage() {
                           episodePrice: row.episodePrice,
                           seriesPricePercent: row.seriesPricePercent,
                           exclusiveUntil: until,
+                          exclusiveOpen: row.exclusiveOpen,
                         };
                       })()}
                     />

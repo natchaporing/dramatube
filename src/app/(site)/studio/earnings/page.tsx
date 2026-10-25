@@ -132,13 +132,15 @@ export default async function EarningsPage() {
                       {sale.credits}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted">
-                      {sale.status === "reversed"
-                        ? t("earn.statusReversed")
-                        : sale.status === "paid"
-                          ? t("earn.statusPaid")
-                          : sale.availableAt > now
-                            ? t("earn.statusHeld", { date: formatDate(sale.availableAt, locale) })
-                            : t("earn.statusAvailable")}
+                      {sale.kind === "clawback"
+                        ? t("earn.statusClawback")
+                        : sale.status === "reversed"
+                          ? t("earn.statusReversed")
+                          : sale.status === "paid"
+                            ? t("earn.statusPaid")
+                            : sale.availableAt > now
+                              ? t("earn.statusHeld", { date: formatDate(sale.availableAt, locale) })
+                              : t("earn.statusAvailable")}
                     </td>
                   </tr>
                 ))}

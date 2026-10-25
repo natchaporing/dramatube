@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { reports, users, videos } from "@/db/schema";
-import { refundVideoUnlocks } from "./earnings";
+import { refundVideoUnlocks } from "./refunds";
 import { mediaUrl } from "./storage";
 
 /** The moderation queue: open reports grouped by video, most-reported first. */
@@ -60,9 +60,12 @@ export async function removedVideos() {
 }
 
 export async function removeVideo(videoId: string, reason: string) {
-  // Viewers who paid for it and are still inside the refund window get their credits back.
-  await refundVideoUnlocks(videoId);
   await db.transaction(async (tx) => {
+    // Locked first, so no unlock can land between the refunds and the removal.
+    const [video] = await tx.select({ id: videos.id }).from(videos).where(eq(videos.id, videoId)).for("update").limit(1);
+    if (!video) return;
+    // Everyone who paid for it gets their credits back.
+    await refundVideoUnlocks(tx, videoId);
     await tx
       .update(videos)
       .set({ status: "removed", removedReason: reason.trim().slice(0, 300) || "Breaks the community rules", updatedAt: new Date() })

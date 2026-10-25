@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -311,6 +312,10 @@ export const purchases = pgTable(
   (t) => [
     uniqueIndex("purchases_provider_ref_idx").on(t.provider, t.providerRef),
     index("purchases_user_idx").on(t.userId, t.createdAt),
+    // The first-top-up offer is once per account, however many tabs ask at once.
+    uniqueIndex("purchases_first_pack_idx")
+      .on(t.userId)
+      .where(sql`${t.packId} = 'first' and ${t.status} in ('pending', 'paid', 'reversed')`),
   ],
 );
 
@@ -347,7 +352,7 @@ export const creditLedger = pgTable(
     id: text("id").primaryKey(),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     delta: integer("delta").notNull(),
-    reason: text("reason", { enum: ["topup", "bonus", "unlock", "refund", "reversal"] }).notNull(),
+    reason: text("reason", { enum: ["topup", "bonus", "unlock", "refund", "reversal", "expiry"] }).notNull(),
     purchaseId: text("purchase_id"),
     unlockId: text("unlock_id"),
     externalRef: text("external_ref"),
@@ -382,8 +387,34 @@ export const unlocks = pgTable(
 );
 
 /**
+ * Which credits paid for which unlock: one row per lot an unlock drew on.
+ * This is what lets money that goes back to a card find the episodes it
+ * bought, and lets a refund put credits back into the lot they came from.
+ */
+export const creditSpends = pgTable(
+  "credit_spends",
+  {
+    id: text("id").primaryKey(),
+    unlockId: text("unlock_id").notNull(),
+    lotId: text("lot_id")
+      .notNull()
+      .references(() => creditLots.id, { onDelete: "cascade" }),
+    /** The top-up behind the lot. */
+    purchaseId: text("purchase_id"),
+    amount: integer("amount").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("credit_spends_unlock_idx").on(t.unlockId), index("credit_spends_purchase_idx").on(t.purchaseId)],
+);
+
+/**
  * The creator's side of an unlock. Held for 14 days — the refund window —
  * then available to cash out. `payoutId` is set when a payout claims it.
+ *
+ * A sale that is undone before a payout claims it is marked reversed. One
+ * undone after — the buyer's money went back, or the episode was taken down
+ * once the earnings were already being paid — gets a `clawback` row of
+ * negative credits, which comes off the creator's next payout.
  */
 export const earnings = pgTable(
   "earnings",
@@ -393,6 +424,7 @@ export const earnings = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     unlockId: text("unlock_id").notNull(),
+    kind: text("kind", { enum: ["sale", "clawback"] }).notNull().default("sale"),
     videoId: text("video_id"),
     credits: integer("credits").notNull(),
     attribution: text("attribution", { enum: ["direct", "discovered"] }).notNull(),
@@ -401,7 +433,7 @@ export const earnings = pgTable(
     payoutId: text("payout_id"),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("earnings_unlock_idx").on(t.unlockId), index("earnings_creator_idx").on(t.creatorId, t.availableAt)],
+  (t) => [uniqueIndex("earnings_unlock_idx").on(t.unlockId, t.kind), index("earnings_creator_idx").on(t.creatorId, t.availableAt)],
 );
 
 /** A creator's application to sell, and its outcome. */

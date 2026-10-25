@@ -30,7 +30,7 @@ export default async function AdminPage() {
                     {t("admin.sendTo", { amount: satangToBaht(payout.amountSatang), id: payout.promptpayId, name: payout.legalName })}
                   </div>
                   <div className="text-xs text-muted">
-                    @{handle} · {payout.credits.toLocaleString()} credits · {timeAgo(payout.requestedAt, locale)}
+                    @{handle} · {t("earn.credits", { count: payout.credits.toLocaleString() })} · {timeAgo(payout.requestedAt, locale)}
                   </div>
                 </div>
                 <form action={markPayoutPaidAction} className="flex gap-2">

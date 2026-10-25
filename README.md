@@ -87,6 +87,7 @@ pnpm test        # unit tests: parsing, ranges, sniffing, i18n completeness, red
 pnpm typecheck
 pnpm lint
 pnpm e2e         # drives a running server in a real browser (see below)
+pnpm money-check # the money rules against the database: races, refunds, reversals
 ```
 
 `pnpm e2e` signs up a creator and a viewer and walks the site the way people
@@ -215,34 +216,61 @@ production.
 number, date of birth, 20 or older) and a moderator approves. They then put a
 series on sale from Studio → Series: how many episodes are free, the price
 per episode (10–60 credits), what the rest of the series costs at once
-(50–100% of buying one by one), and optionally 90 days of exclusivity for
-ten more points of share.
+(50–100% of buying one by one, for two or more episodes), and optionally
+exclusivity for ten more points of share. Exclusivity covers a series' first
+90 days from its first episode: it can be switched on inside that window,
+not switched off before it ends, and not started again.
+
+**A sale is at the price the buyer saw.** The paywall sends the price on its
+button (and, for the rest of a series, which episodes and the total); the
+sale goes through only if that is still the price, with the series row locked
+so a price change waits for it. Otherwise the viewer is told the price
+changed and shown the new one.
 
 **The paywall is on the file.** A locked episode's page shows the paywall,
 and the media route refuses its file to anyone who has not bought it, so a
 copied file address does not get round it. Paid files are never given a
 shared-cache header. The vertical feed leaves locked episodes out, and an
-embed sends the viewer to DramaTube to buy. **Selling needs a private bucket**:
-video files always go through the checked route, and with a public bucket a
-buyer could share a file's address directly.
+embed sends the viewer to DramaTube to buy. Moderators are never locked out,
+so reviewing a reported episode does not pay the creator reported.
+**Selling needs a private bucket**: video files always go through the checked
+route, but with a public bucket a file's address is a permanent free copy.
+With `S3_PUBLIC_BASE_URL` set, a series cannot go on sale unless
+`S3_VIDEOS_PRIVATE=1` says the `videos/` prefix is not publicly readable.
 
 **Who brought the viewer decides the share.** A creator's own links carry
-`?ref=<handle>`; a viewer who arrives through one buys from that creator at
-70% for 30 days (remembered in a signed cookie and on the account). Every
-other sale is 40%. The Studio earnings page shows each sale's source.
+`?ref=<handle>`; a viewer who arrives through one from outside DramaTube buys
+from that creator at 70% for 30 days (remembered in a signed cookie and on
+the account). Every other sale is 40%, and exclusive series add ten points to
+both. A `?ref=` link followed from a DramaTube page does not count, and
+links back into the site in descriptions, comments and bios lose their
+`?ref=`, so a creator cannot claim viewers DramaTube found. Shares are rounded
+down to the credit. The Studio earnings page shows each sale's source.
 
 **Getting paid.** Earnings are held 14 days, the refund window, then can be
 cashed out from ฿500 at ฿0.30 a credit. A payout request copies the seller's
 PromptPay number at that moment; a moderator sends the transfer and marks it
-paid with its reference on the Moderation page. If a sold episode is removed
-or deleted, its buyers inside the window get their credits back and the
-creator's matching earnings are reversed.
+paid with its reference on the Moderation page. An approved seller cannot
+re-apply (it would take their series off sale); changing a payout account
+goes through support for now.
+
+**Undoing a sale.** If a sold episode is removed, deleted or made private,
+every buyer gets their credits back, into the lots they came from (so bonus
+credits keep their expiry). If money goes back to a card — a refund or a
+dispute — the credits it bought are taken back, and so is every episode bought
+with them; one that arrives before the payment was confirmed stops the grant.
+Either way the creator's sale is reversed if no payout has claimed it yet, or
+comes off their next payout as a clawback if one has. Each unlock records
+which top-ups paid for it, which is what makes this exact.
 
 Neither gateway is reachable from CI, so both adapters are written to their
 documentation and are untested against a live account: the Stripe webhook's
-signature check and the choice of provider are unit-tested, and the whole
-flow from top-up to payout request is exercised end to end against the
-stand-in. Try one real ฿19 top-up on each method before launch.
+signature check and the choice of provider are unit-tested, the whole flow
+from top-up to payout request is exercised end to end against the stand-in,
+and `pnpm money-check` runs the rules a browser cannot see — concurrent
+purchases, refunds after payout, card reversals, the ledger adding up to the
+balance — against the database. Try one real ฿19 top-up on each method
+before launch.
 
 ---
 

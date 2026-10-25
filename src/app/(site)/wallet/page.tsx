@@ -58,7 +58,9 @@ export default async function WalletPage({ searchParams }: PageProps<"/wallet">)
             {history.map((row) => (
               <li key={row.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
                 <div className="min-w-0">
-                  <div className="text-text">{t(`wallet.reason.${row.reason}` as MessageKey)}{row.note ? ` · ${row.note}` : ""}</div>
+                  <div className="text-text">{t(`wallet.reason.${row.reason}` as MessageKey)}
+                    {/* Notes are codes, "episodes:3" or "removed", so they read in either language. */}
+                    {row.note ? ` · ${t(`wallet.note.${row.note.split(":")[0]}` as MessageKey, { count: Number(row.note.split(":")[1]) || 0 })}` : ""}</div>
                   <div className="text-xs text-faint">{formatDate(row.createdAt, locale)}</div>
                 </div>
                 <span className={`font-mono tabular-nums ${row.delta >= 0 ? "text-good" : "text-text"}`}>

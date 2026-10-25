@@ -253,7 +253,10 @@ else, which is why per-member beats a single pool.
 series prices, the paywall on the file, attribution, earnings, seller
 verification and payout requests sent by hand from the Moderation page.
 Decided: 40% on discovered sales, whole-series prices in the first version,
-hybrid payments.
+hybrid payments. Built in alongside: refunds and card reversals undo the
+creator's sale too (a clawback off the next payout once one has been paid);
+shares are rounded down; a sale goes through only at the price the buyer was
+shown; the exclusive bonus covers a series' first 90 days only.
 
 
 1. **Wallet and ledger** — append-only; bought, bonus and earned balances;

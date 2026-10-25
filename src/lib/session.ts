@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
+import { uniqueViolation } from "@/db/errors";
 import { users, type User } from "@/db/schema";
 import { env } from "./env";
 import { newId } from "./ids";
@@ -111,9 +112,8 @@ export async function registerUser(opts: { email: string; name: string; password
     return user;
   } catch (error) {
     // Two sign-ups racing for one email or handle: the unique index decides.
-    if ((error as { code?: string }).code === "23505") {
-      throw new AccountError(String(error).includes("handle") ? "handle_taken" : "email_taken");
-    }
+    const index = uniqueViolation(error);
+    if (index !== null) throw new AccountError(index.includes("handle") ? "handle_taken" : "email_taken");
     throw error;
   }
 }

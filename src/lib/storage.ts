@@ -111,6 +111,17 @@ export async function localSize(key: string): Promise<number | null> {
 }
 
 /**
+ * Whether paid episodes can be kept from people who have not bought them.
+ * The media route only ever hands out short-lived links to video files, but
+ * a link names the file, and in a publicly readable bucket that name is a
+ * permanent free copy. A public base URL says the bucket is public unless
+ * the operator says the videos in it are not.
+ */
+export function videosArePrivate(): boolean {
+  return env.storageDriver === "local" || !env.s3PublicBaseUrl || env.s3VideosPrivate;
+}
+
+/**
  * The URL a browser should use for a stored object.
  *
  * Video files always go through /api/media, which checks who may play them

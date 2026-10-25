@@ -1,14 +1,18 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { db } from "@/db";
+import { db, type Tx } from "@/db";
 import { sellers, series, unlocks, videos } from "@/db/schema";
+import { isAdmin } from "./session";
+import type { Viewer } from "./videos";
 
 /**
  * Who may play which episode.
  *
  * An episode is for sale when its series is on sale, the series' creator is
  * an approved seller, and its number is past the series' free episodes. It is
- * locked for a viewer who is not its creator and has not unlocked it. Episodes
- * outside a series, or without a number, are always free.
+ * locked for a viewer who is not its creator, not a moderator (who must be
+ * able to review a reported episode without paying the creator reported),
+ * and has not unlocked it. Episodes outside a series, or without a number,
+ * are always free.
  *
  * The media route asks this before sending a byte of a locked episode, so the
  * paywall holds for anyone with the file's URL, not just for the play button.
@@ -60,6 +64,23 @@ export async function saleOf(seriesId: string): Promise<Sale | null> {
   return (await salesFor([seriesId])).get(seriesId) ?? null;
 }
 
+/**
+ * The sale terms inside a buyer's transaction, with the series row
+ * share-locked: a price change waits for the sale to commit, so what the
+ * buyer was charged is what the series said when they bought.
+ */
+export async function lockSale(tx: Tx, seriesId: string): Promise<Sale | null> {
+  const [row] = await tx
+    .select(saleColumns)
+    .from(series)
+    .leftJoin(sellers, eq(sellers.userId, series.channelId))
+    .where(eq(series.id, seriesId))
+    .for("share", { of: series })
+    .limit(1);
+  return row ? toSale(row) : null;
+}
+
+
 export interface EpisodeLike {
   id: string;
   seriesId: string | null;
@@ -71,7 +92,9 @@ export interface EpisodeLike {
  * The episodes in a list that this viewer would have to pay for, with their
  * prices. Missing from the map means playable.
  */
-export async function locksFor(viewerId: string | null, episodes: EpisodeLike[]): Promise<Map<string, number>> {
+export async function locksFor(viewer: Viewer, episodes: EpisodeLike[]): Promise<Map<string, number>> {
+  if (viewer && isAdmin(viewer)) return new Map();
+  const viewerId = viewer?.id ?? null;
   const candidates = episodes.filter((episode) => episode.seriesId && episode.channelId !== viewerId);
   if (candidates.length === 0) return new Map();
   const sales = await salesFor(candidates.map((episode) => episode.seriesId!));
@@ -99,7 +122,7 @@ export interface EpisodeLock {
 }
 
 /** One episode, for the watch page and the media route. */
-export async function lockFor(viewerId: string | null, videoId: string): Promise<EpisodeLock> {
+export async function lockFor(viewer: Viewer, videoId: string): Promise<EpisodeLock> {
   const [video] = await db
     .select({ id: videos.id, seriesId: videos.seriesId, episodeNumber: videos.episodeNumber, channelId: videos.channelId })
     .from(videos)
@@ -107,7 +130,7 @@ export async function lockFor(viewerId: string | null, videoId: string): Promise
     .limit(1);
   if (!video?.seriesId) return { locked: false, price: 0, sale: null };
   const sale = await saleOf(video.seriesId);
-  if (!isPaidEpisode(sale, video.episodeNumber) || video.channelId === viewerId) return { locked: false, price: 0, sale };
-  const prices = await locksFor(viewerId, [video]);
+  if (!isPaidEpisode(sale, video.episodeNumber) || video.channelId === viewer?.id) return { locked: false, price: 0, sale };
+  const prices = await locksFor(viewer, [video]);
   return { locked: prices.has(video.id), price: sale!.episodePrice, sale };
 }

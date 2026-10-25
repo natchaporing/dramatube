@@ -221,6 +221,11 @@ export function VerticalCard({ video, fmt }: { video: Card; fmt: Fmt }) {
           <Placeholder title={video.title} />
         )}
         <span className="absolute left-1.5 top-1.5 rounded bg-ai-dim/90 px-1.5 py-0.5 text-[10px] font-semibold text-ai">AI</span>
+        {video.lockPrice !== undefined && (
+          <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-warn" data-testid="lock-badge">
+            <Lock size={11} /> {video.lockPrice}
+          </span>
+        )}
       </div>
       <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-text">{video.title}</h3>
       <div className="mt-0.5 text-xs text-muted">{viewsLabel(video.viewCount, fmt)}</div>

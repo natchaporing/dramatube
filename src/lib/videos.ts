@@ -457,9 +457,9 @@ export async function listSeries(channelId: string, includeEmpty = false): Promi
 }
 
 /** Mark the episodes in a list that this viewer would have to pay for. */
-export async function withLocks<T extends VideoCard>(viewerId: string | null, list: T[]): Promise<T[]> {
+export async function withLocks<T extends VideoCard>(viewer: Viewer, list: T[]): Promise<T[]> {
   const prices = await locksFor(
-    viewerId,
+    viewer,
     list.map((card) => ({ id: card.id, seriesId: card.seriesId, episodeNumber: card.episodeNumber, channelId: card.channel.id })),
   );
   if (prices.size === 0) return list;

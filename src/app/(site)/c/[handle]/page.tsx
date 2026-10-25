@@ -11,7 +11,7 @@ import { normalizeHandle } from "@/lib/handles";
 import { isSubscribed } from "@/lib/social";
 import { mediaUrl } from "@/lib/storage";
 import { pageContext } from "@/lib/viewer";
-import { channelByHandle, channelStats, listChannelVideos, listPublicCount, listSeries } from "@/lib/videos";
+import { channelByHandle, channelStats, listChannelVideos, listPublicCount, listSeries, withLocks } from "@/lib/videos";
 
 const TABS = ["videos", "series", "about"] as const;
 type Tab = (typeof TABS)[number];
@@ -46,7 +46,7 @@ export default async function ChannelPage({ params, searchParams }: PageProps<"/
     listPublicCount(channel.id),
     user && !own ? isSubscribed(user.id, channel.id) : Promise.resolve(false),
     tab === "about" ? channelStats(channel.id, true) : Promise.resolve(null),
-    tab === "videos" ? listChannelVideos(channel.id, { includeHidden: false, sort }) : Promise.resolve([]),
+    tab === "videos" ? listChannelVideos(channel.id, { includeHidden: false, sort }).then((list) => withLocks(user, list)) : Promise.resolve([]),
     tab === "series" ? listSeries(channel.id) : Promise.resolve([]),
   ]);
 

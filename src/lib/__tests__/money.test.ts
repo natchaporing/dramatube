@@ -21,8 +21,10 @@ describe("creator share", () => {
     expect(creatorCredits(30, "direct", true)).toBe(24);
     expect(creatorCredits(30, "discovered", true)).toBe(15);
   });
-  it("rounds half a credit up", () => {
-    expect(creatorCredits(25, "direct", false)).toBe(18);
+  it("rounds down, so a share is never more than its percentage", () => {
+    expect(creatorCredits(25, "direct", false)).toBe(17);
+    // A 7-credit episode from a series bundle at 80%: 5.6 pays 5, not 6.
+    expect(creatorCredits(7, "direct", true)).toBe(5);
   });
   it("counts exclusivity for 90 days", () => {
     const now = new Date("2026-10-25T00:00:00Z");
